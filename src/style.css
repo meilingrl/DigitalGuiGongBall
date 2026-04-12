@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   全局 CSS 变量令牌系统
+   所有流体值基于视口宽度线性插值，无硬断点跳变。
+   命名规则：--space-* 间距，--content-* 内容区宽度上限，
+             --sidebar-w 侧边栏宽度，--radius-* 圆角。
+   ============================================================ */
+:root {
+  /* 间距令牌 */
+  --space-xs:  clamp(0.25rem, 0.20rem + 0.25vw, 0.50rem);
+  --space-sm:  clamp(0.50rem, 0.40rem + 0.50vw, 0.75rem);
+  --space-md:  clamp(1.00rem, 0.80rem + 1.00vw, 1.50rem);
+  --space-lg:  clamp(1.50rem, 1.20rem + 1.50vw, 2.50rem);
+  --space-xl:  clamp(2.00rem, 1.50rem + 2.50vw, 4.00rem);
+  --space-2xl: clamp(3.00rem, 2.00rem + 5.00vw, 6.00rem);
+
+  /* 内容区最大宽度令牌（配合 min(100%, var(--content-*)) 使用） */
+  --content-sm:  640px;
+  --content-md:  768px;
+  --content-lg:  1024px;
+  --content-xl:  1280px;
+  --content-2xl: 1536px;
+
+  /* 侧边栏宽度：随视口宽度连续缩放，两端锚定 */
+  --sidebar-w: clamp(168px, 13vw, 220px);
+  /* 收起态宽度：仅显示图标 */
+  --sidebar-w-collapsed: 56px;
+
+  /* 圆角令牌 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
+  /* 字体渲染优化 */
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-feature-settings: 'kern' 1;
+  font-kerning: normal;
+}
+
+/* ============================================================
+   Tailwind @layer utilities — 容器感知工具类
+   container-grid：开启 inline-size 容器查询上下文
+   content-grid：流体自适应列数栅格（无需声明断点）
+   ============================================================ */
+@layer utilities {
+  .container-grid {
+    container-type: inline-size;
+  }
+
+  .content-grid {
+    display: grid;
+    gap: var(--space-md);
+    grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  }
+}
