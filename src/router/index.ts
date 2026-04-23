@@ -9,13 +9,19 @@ import StatsView from '../views/hub/StatsView.vue'
 import SettingsView from '../views/hub/SettingsView.vue'
 import ExploreView from '../views/hub/ExploreView.vue'
 import MallView from '../views/hub/MallView.vue'
+import LoginView from '../views/LoginView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
+      path: '/login',
+      name: 'login',
+      component: LoginView,
+    },
+    {
       path: '/',
-      redirect: '/hub/dashboard',
+      redirect: '/login',
     },
     {
       path: '/hub',

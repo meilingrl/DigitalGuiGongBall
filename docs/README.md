@@ -7,14 +7,17 @@
 
 ## 文档一览
 
-| 文件 | 内容概要 |
-|------|----------|
-| [MAP_SYSTEM_DESIGN.md](./MAP_SYSTEM_DESIGN.md) | 地图系统：交互规格、数据与接口约定、降级策略等 |
-| [ADAPTIVE_ARCHITECTURE.md](./ADAPTIVE_ARCHITECTURE.md) | 全站自适应：流体布局、组件边界、改造优先级 |
-| [FEATURE_DESIGN_NEW_MODULES.md](./FEATURE_DESIGN_NEW_MODULES.md) | 新模块功能设计草案 |
-| [DEFENSE_REPORT_KEYPOINTS.md](./DEFENSE_REPORT_KEYPOINTS.md) | 答辩/汇报要点整理 |
-| [TEAM_WORKPLAN.md](./TEAM_WORKPLAN.md) | 团队工作计划 |
-| [VideoCard-design.md](./VideoCard-design.md) | 视频卡片组件设计与实现说明 |
+
+| 文件                                                               | 内容概要                    |
+| ---------------------------------------------------------------- | ----------------------- |
+| [MAP_SYSTEM_DESIGN.md](./MAP_SYSTEM_DESIGN.md)                   | 地图系统：交互规格、数据与接口约定、降级策略等 |
+| [ADAPTIVE_ARCHITECTURE.md](./ADAPTIVE_ARCHITECTURE.md)           | 全站自适应：流体布局、组件边界、改造优先级   |
+| [FEATURE_DESIGN_NEW_MODULES.md](./FEATURE_DESIGN_NEW_MODULES.md) | 新模块功能设计草案               |
+| [DEFENSE_REPORT_KEYPOINTS.md](./DEFENSE_REPORT_KEYPOINTS.md)     | 答辩/汇报要点整理               |
+| [TEAM_WORKPLAN.md](./TEAM_WORKPLAN.md)                           | 团队工作计划                  |
+| [VideoCard-design.md](./VideoCard-design.md)                     | 视频卡片组件设计与实现说明           |
+| [NEXT_ITERATION_BACKLOG.md](./NEXT_ITERATION_BACKLOG.md)         | 下一轮迭代：需求对齐与任务评估           |
+
 
 ---
 

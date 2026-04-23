@@ -1,3 +1,13 @@
+# Dependencies & build
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment & secrets
+.env
+.env.*
+
 # Logs
 logs
 *.log
@@ -7,19 +17,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-.env
-.env.*
+# OS / editor noise
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.sw?
 
-# Editor directories and files
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.njsproj
 *.sln
-*.sw?
+
+# TypeScript / coverage
+*.tsbuildinfo
+coverage/
+
+# Mistaken empty file (e.g. typo for `npm run`)
+/npm
+
+# Original full-length videos: can exceed GitHub 100MB per file; app uses public/previews/ + public/covers/
+/public/raw/

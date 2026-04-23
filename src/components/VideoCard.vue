@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onUnmounted } from 'vue'
+import { resolvePublicUrl } from '../utils/publicUrl'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 const props = withDefaults(
@@ -10,15 +11,19 @@ const props = withDefaults(
     duration: string
     /** 描述文本（已由父级完成国际化） */
     desc: string
-    /** 封面图路径（相对 /public），缺省时显示渐变占位 */
+    /** 封面图路径（相对 public/），缺省时显示渐变占位 */
     poster?: string
-    /** 微缩预览视频路径（相对 /public），缺省时禁用悬停预览逻辑 */
+    /** 微缩预览视频路径（相对 public/），缺省时禁用悬停预览逻辑 */
     preview?: string
-    /** 观看按钮文案，由父级注入 i18n 值 */
+    /** 无障碍：封面区播放图标的 aria-label */
     watchLabel?: string
   }>(),
-  { watchLabel: 'Watch' },
+  { watchLabel: 'Video preview' },
 )
+
+/** 拼接 Vite BASE_URL，避免子路径部署时 /covers/... 404 */
+const posterUrl = computed(() => resolvePublicUrl(props.poster))
+const previewUrl = computed(() => resolvePublicUrl(props.preview))
 
 // ─── 悬停状态机 ───────────────────────────────────────────────────────────────
 //
@@ -49,8 +54,27 @@ async function activateVideo() {
   }
 }
 
+/** 用户点击 / 触摸媒体区：立即预览，不走 300ms 延迟（触摸设备无可靠 hover） */
+function onMediaActivate() {
+  if (!previewUrl.value) return
+  if (hoverTimer.value !== null) {
+    clearTimeout(hoverTimer.value)
+    hoverTimer.value = null
+  }
+  if (fadeOutTimer.value !== null) {
+    clearTimeout(fadeOutTimer.value)
+    fadeOutTimer.value = null
+  }
+  if (isHoverConfirmed.value) {
+    isVideoVisible.value = true
+    nextTick(() => videoRef.value?.play().catch(() => {}))
+    return
+  }
+  activateVideo()
+}
+
 function onMouseEnter() {
-  if (!props.preview) return
+  if (!previewUrl.value) return
 
   // 若正处于淡出阶段（用户快速移回），撤销淡出并直接恢复
   if (fadeOutTimer.value !== null) {
@@ -126,12 +150,15 @@ onUnmounted(() => {
          overflow-hidden 防止绝对定位子元素溢出圆角。
          bg-slate-900 作为兜底背景，消除封面→视频过渡间隙的白色闪烁。
     ─────────────────────────────────────────────────────────────────────── -->
-    <div class="relative aspect-video overflow-hidden bg-slate-900">
+    <div
+      class="relative aspect-video cursor-pointer overflow-hidden bg-slate-900"
+      @click="onMediaActivate"
+    >
 
       <!-- 层 1：封面图（始终存在，poster 缺省时隐藏此层，渐变占位层接管） -->
       <img
-        v-if="poster"
-        :src="poster"
+        v-if="posterUrl"
+        :src="posterUrl"
         :alt="title"
         loading="lazy"
         draggable="false"
@@ -151,9 +178,9 @@ onUnmounted(() => {
            muted + loop + playsinline 满足主流浏览器 autoplay 策略要求。
       -->
       <video
-        v-if="isHoverConfirmed && preview"
+        v-if="isHoverConfirmed && previewUrl"
         ref="videoRef"
-        :src="preview"
+        :src="previewUrl"
         preload="none"
         muted
         loop
@@ -179,6 +206,7 @@ onUnmounted(() => {
                  transition-transform duration-200 group-hover:scale-105
                  dark:bg-slate-100 dark:text-teal-900"
           :aria-label="watchLabel"
+          @click.stop.prevent="onMediaActivate"
         >
           <svg class="ml-0.5 h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M8 5v14l11-7z" />
@@ -203,13 +231,6 @@ onUnmounted(() => {
       <p class="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
         {{ desc }}
       </p>
-      <button
-        type="button"
-        class="mt-3 text-sm font-medium text-teal-700 transition-colors
-               hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-200"
-      >
-        {{ watchLabel }}
-      </button>
     </div>
   </article>
 </template>
