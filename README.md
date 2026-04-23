@@ -44,7 +44,7 @@ VITE_AMAP_KEY=你的高德_Web端_JS_API_Key
 在 [高德开放平台](https://lbs.amap.com/) 申请 **Web 端（JS API）** Key。修改 `.env` 后需重启开发服务器。
 
 ```bash
-npm run dev      # 默认 http://localhost:5173，/ 会重定向到 /hub/dashboard
+npm run dev      # 默认 http://localhost:5173，/ 会重定向到 /login；进入 Hub 后为 /hub/dashboard
 npm run build    # 类型检查 + 生产构建
 npm run preview  # 预览构建产物
 ```
