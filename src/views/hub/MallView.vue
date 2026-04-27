@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { products, type Product, type ProductCategory } from '../../data/mall'
 import { useAppStore } from '../../stores/app'
 import { usePointsStore } from '../../stores/points'
+import { resolvePublicUrl } from '../../utils/publicUrl'
 
 const store = useAppStore()
 const pointsStore = usePointsStore()
@@ -100,6 +101,10 @@ function fillRedeemMsg(p: Product) {
   return t.value.mallRedeemConfirmMsg
     .replace('{points}', String(p.points))
     .replace('{name}', productName(p))
+}
+
+function productImage(p: Product) {
+  return resolvePublicUrl(p.image)
 }
 </script>
 
@@ -213,9 +218,13 @@ function fillRedeemMsg(p: Product) {
             class="flex aspect-[3/1] items-center justify-center bg-gradient-to-br"
             :class="selectedProduct.accentColor"
           >
-            <svg class="h-16 w-16 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-            </svg>
+            <img
+              :src="productImage(selectedProduct)"
+              :alt="productName(selectedProduct)"
+              class="h-full w-full object-cover"
+              loading="lazy"
+              draggable="false"
+            />
           </div>
           <div class="p-6 space-y-4">
             <div>
@@ -290,9 +299,13 @@ function fillRedeemMsg(p: Product) {
               class="flex aspect-[2/1] items-center justify-center bg-gradient-to-br"
               :class="p.accentColor"
             >
-              <svg class="h-10 w-10 text-slate-300/80 group-hover:scale-105 transition-transform dark:text-slate-600/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-              </svg>
+              <img
+                :src="productImage(p)"
+                :alt="productName(p)"
+                class="h-full w-full object-cover transition-transform group-hover:scale-105"
+                loading="lazy"
+                draggable="false"
+              />
             </div>
             <div class="p-4">
               <div class="mb-1 flex items-center justify-between">

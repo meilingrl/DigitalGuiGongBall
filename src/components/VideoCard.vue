@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onUnmounted } from 'vue'
 import { resolvePublicUrl } from '../utils/publicUrl'
+import { usePointerType } from '../composables/usePointerType'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 const props = withDefaults(
@@ -17,13 +18,29 @@ const props = withDefaults(
     preview?: string
     /** 无障碍：封面区播放图标的 aria-label */
     watchLabel?: string
+    /** 在无法依赖悬停的环境（粗指针或无 hover）下，角标文案；缺省不显示角标 */
+    tapPreviewHint?: string
   }>(),
   { watchLabel: 'Video preview' },
 )
 
-/** 拼接 Vite BASE_URL，避免子路径部署时 /covers/... 404 */
+const emit = defineEmits<{
+  /** 用户请求全屏/弹层播放（由父级承载播放器） */
+  open: []
+}>()
+
+const { lacksReliableHover } = usePointerType()
+
+/** 拼接 Vite BASE_URL，避免子路径部署时 /materials/... 404 */
 const posterUrl = computed(() => resolvePublicUrl(props.poster))
 const previewUrl = computed(() => resolvePublicUrl(props.preview))
+
+const showTapPreviewBadge = computed(
+  () =>
+    Boolean(previewUrl.value) &&
+    lacksReliableHover.value &&
+    Boolean(props.tapPreviewHint?.trim()),
+)
 
 // ─── 悬停状态机 ───────────────────────────────────────────────────────────────
 //
@@ -52,25 +69,6 @@ async function activateVideo() {
   } catch {
     // muted 视频的 autoplay 通常被允许，此处静默捕获极端情况
   }
-}
-
-/** 用户点击 / 触摸媒体区：立即预览，不走 300ms 延迟（触摸设备无可靠 hover） */
-function onMediaActivate() {
-  if (!previewUrl.value) return
-  if (hoverTimer.value !== null) {
-    clearTimeout(hoverTimer.value)
-    hoverTimer.value = null
-  }
-  if (fadeOutTimer.value !== null) {
-    clearTimeout(fadeOutTimer.value)
-    fadeOutTimer.value = null
-  }
-  if (isHoverConfirmed.value) {
-    isVideoVisible.value = true
-    nextTick(() => videoRef.value?.play().catch(() => {}))
-    return
-  }
-  activateVideo()
 }
 
 function onMouseEnter() {
@@ -128,6 +126,16 @@ onUnmounted(() => {
   if (hoverTimer.value !== null) clearTimeout(hoverTimer.value)
   if (fadeOutTimer.value !== null) clearTimeout(fadeOutTimer.value)
 })
+
+function requestOpen() {
+  emit('open')
+}
+
+function onCardKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  e.preventDefault()
+  requestOpen()
+}
 </script>
 
 <template>
@@ -137,12 +145,17 @@ onUnmounted(() => {
     鼠标事件仅在有 preview 路径时才真正触发逻辑。
   -->
   <article
-    class="container-grid group overflow-hidden rounded-2xl border border-slate-200 bg-white
+    class="container-grid group flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white
            shadow-soft transition-[border-color,box-shadow] duration-200
            hover:border-teal-200/70 hover:shadow-md
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400
            dark:border-slate-800 dark:bg-slate-900 dark:hover:border-teal-900/60"
+    role="button"
+    tabindex="0"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
+    @click="requestOpen"
+    @keydown="onCardKeydown"
   >
 
     <!-- ── 媒体容器 ──────────────────────────────────────────────────────────
@@ -150,10 +163,7 @@ onUnmounted(() => {
          overflow-hidden 防止绝对定位子元素溢出圆角。
          bg-slate-900 作为兜底背景，消除封面→视频过渡间隙的白色闪烁。
     ─────────────────────────────────────────────────────────────────────── -->
-    <div
-      class="relative aspect-video cursor-pointer overflow-hidden bg-slate-900"
-      @click="onMediaActivate"
-    >
+    <div class="relative aspect-video shrink-0 cursor-pointer overflow-hidden bg-slate-900">
 
       <!-- 层 1：封面图（始终存在，poster 缺省时隐藏此层，渐变占位层接管） -->
       <img
@@ -206,13 +216,25 @@ onUnmounted(() => {
                  transition-transform duration-200 group-hover:scale-105
                  dark:bg-slate-100 dark:text-teal-900"
           :aria-label="watchLabel"
-          @click.stop.prevent="onMediaActivate"
+          @click.stop.prevent="requestOpen"
         >
           <svg class="ml-0.5 h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M8 5v14l11-7z" />
           </svg>
         </button>
       </div>
+
+      <!-- 触屏 / 无悬停环境：与时长角标对称的轻量提示（有 preview 且父级传入文案时） -->
+      <span
+        v-if="showTapPreviewBadge"
+        class="absolute bottom-2 left-2 max-w-[calc(100%-5rem)] truncate rounded bg-black/60
+               px-2 py-0.5 text-[11px] font-medium text-white
+               transition-opacity duration-200"
+        :class="isVideoVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'"
+        aria-hidden="true"
+      >
+        {{ tapPreviewHint }}
+      </span>
 
       <!-- 时长角标（始终显示在右下角，不参与过渡） -->
       <span
@@ -224,11 +246,13 @@ onUnmounted(() => {
     </div>
 
     <!-- ── 文字信息区 ─────────────────────────────────────────────────────── -->
-    <div class="p-4">
-      <h4 class="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
+    <div class="flex min-h-0 flex-1 flex-col p-4">
+      <h4
+        class="font-display line-clamp-2 min-h-[2.75rem] text-base font-semibold leading-snug text-slate-900 dark:text-white"
+      >
         {{ title }}
       </h4>
-      <p class="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+      <p class="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
         {{ desc }}
       </p>
     </div>

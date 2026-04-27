@@ -20,6 +20,8 @@ export interface Venue {
   tel: string
   descZh: string
   descEn: string
+  /** 场馆头图，相对 /public */
+  image?: string
 }
 
 export interface Activity {
@@ -37,6 +39,8 @@ export interface Activity {
   descZh: string
   descEn: string
   pointsReward: number
+  /** 活动头图，相对 /public */
+  image?: string
 }
 
 export const venues: Venue[] = [
@@ -61,6 +65,7 @@ export const venues: Venue[] = [
       '常设「同心鬼工」主题展，以鬼工球多层镂空与同心圆结构为主线，配合史料与影像介绍广州牙雕鬼工球的历史与工艺要点，并可预约研学与手作体验。',
     descEn:
       'Permanent “Concentric Guigong” gallery traces multi-layer openwork ivory spheres and Guangzhou carving heritage, with archival media and bookable study sessions.',
+    image: '/materials/explore/venues/1.webp',
   },
   {
     id: 'v002',
@@ -83,6 +88,7 @@ export const venues: Venue[] = [
       '特展聚焦球体类工艺中的「层套」逻辑：从鬼工球同心层到核雕层次，展示苏作精工如何与广作鬼工球在审美与技法上对话。',
     descEn:
       'A special show on nested spheres — linking Guigong concentric layers with Suzhou micro-carving traditions.',
+    image: '/materials/explore/venues/2.webp',
   },
   {
     id: 'v003',
@@ -105,6 +111,7 @@ export const venues: Venue[] = [
       '沉浸式展区用三维拆解与互动沙盘演示鬼工球从整块料到数十层同心壳的形成过程，适合作为数字鬼工球项目的线下参照体验。',
     descEn:
       'Immersive zone uses 3D breakdowns and touch tables to explain how layered Guigong spheres are formed — a physical anchor for digital demos.',
+    image: '/materials/explore/venues/3.webp',
   },
   {
     id: 'v004',
@@ -127,6 +134,7 @@ export const venues: Venue[] = [
       '系统呈现广作牙雕与鬼工球传承谱系，结合节庆档期推出「一球一故事」导览与亲子拼图活动，突出鬼工球作为岭南工艺名片的文化叙事。',
     descEn:
       'Documents Guangzhou ivory carving lineage and Guigong Ball storytelling tours plus family workshops during festival seasons.',
+    image: '/materials/explore/venues/4.webp',
   },
 ]
 
@@ -148,6 +156,7 @@ export const activities: Activity[] = [
     descEn:
       'An inheritor demos layout, boring, and hollowing steps with section models. Practice piece and tools included; take home a single-layer exercise sphere.',
     pointsReward: 50,
+    image: '/materials/explore/activities/1.webp',
   },
   {
     id: 'a002',
@@ -166,6 +175,7 @@ export const activities: Activity[] = [
     descEn:
       'On 3D capture, parametric models, and online display — material substitutes, rights, and public education for digital Guigong projects.',
     pointsReward: 20,
+    image: '/materials/explore/activities/2.webp',
   },
   {
     id: 'a003',
@@ -184,6 +194,7 @@ export const activities: Activity[] = [
     descEn:
       'Juxtaposes Guigong concentric spheres with micro-carved balls, plus interactive “count the layers” screens on weekends. Free entry.',
     pointsReward: 20,
+    image: '/materials/explore/activities/3.webp',
   },
   {
     id: 'a004',
@@ -202,6 +213,7 @@ export const activities: Activity[] = [
     descEn:
       'Guided layout and scoring on practice blanks to learn “layers first, then hollow” — no real ivory.',
     pointsReward: 50,
+    image: '/materials/explore/activities/4.webp',
   },
   {
     id: 'a005',
@@ -220,6 +232,7 @@ export const activities: Activity[] = [
     descEn:
       'Uses collection scan data for exploded views and sections — maps directly to layer toggles and annotations in a digital Guigong app.',
     pointsReward: 30,
+    image: '/materials/explore/activities/5.webp',
   },
   {
     id: 'a006',
@@ -238,5 +251,6 @@ export const activities: Activity[] = [
     descEn:
       'Docent-led tour linking Guangzhou ivory history with iconic Guigong spheres, Q&A and replica handling.',
     pointsReward: 30,
+    image: '/materials/explore/activities/6.webp',
   },
 ]

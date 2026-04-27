@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { templates } from '../../data/content'
 import { useAppStore } from '../../stores/app'
 import {
   achievements,
@@ -9,6 +11,7 @@ import {
 } from '../../data/stats'
 
 const store = useAppStore()
+const router = useRouter()
 const t = computed(() => store.t)
 
 // ─── radar chart (hexagon) ────────────────────────────────────────────────────
@@ -205,6 +208,12 @@ function sessionName(s: (typeof recentSessions)[0]) {
   return store.locale === 'zh' ? s.templateZh : s.templateEn
 }
 
+function openSessionWork(s: (typeof recentSessions)[0]) {
+  if (!templates.some((x) => x.id === s.templateId)) return
+  store.selectTemplate(s.templateId)
+  router.push({ name: 'atelier' })
+}
+
 const statusStyles: Record<string, string> = {
   completed: 'text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/50',
   'in-progress': 'text-sky-700 bg-sky-50 dark:text-sky-300 dark:bg-sky-950/50',
@@ -301,13 +310,13 @@ const filteredSortedSessions = computed(() => {
     </div>
 
     <!-- Radar + Activity heatmap row -->
-    <div class="mb-8 grid gap-6 lg:grid-cols-[auto_1fr]">
+    <div class="mb-8 flex flex-col md:flex-row gap-6">
 
       <!-- Skill radar -->
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-900 min-w-0 md:flex-[2_2_0%]">
         <h3 class="mb-4 text-sm font-medium text-slate-700 dark:text-slate-300">{{ t.statsSkillTitle }}</h3>
         <div class="flex items-center justify-center">
-          <svg :width="radarSize" :height="radarSize" class="overflow-visible">
+          <svg viewBox="0 0 180 180" class="overflow-visible w-full max-w-[180px]" preserveAspectRatio="xMidYMid meet">
             <polygon
               v-for="r in rings"
               :key="r"
@@ -369,7 +378,7 @@ const filteredSortedSessions = computed(() => {
       </div>
 
       <!-- Full-year activity heatmap -->
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-900 flex-1 min-w-0">
         <!-- Header: title + year nav -->
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300">{{ t.statsActivityTitle }}</h3>
@@ -577,9 +586,17 @@ const filteredSortedSessions = computed(() => {
             <tr
               v-for="s in filteredSortedSessions"
               :key="s.id"
-              class="hover:bg-slate-50 dark:hover:bg-slate-800/40"
+              role="button"
+              tabindex="0"
+              class="cursor-pointer transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/50 dark:hover:bg-slate-800/40"
+              :title="store.locale === 'zh' ? '进入工房打开该模板' : 'Open this template in Atelier'"
+              @click="openSessionWork(s)"
+              @keydown.enter.prevent="openSessionWork(s)"
+              @keydown.space.prevent="openSessionWork(s)"
             >
-              <td class="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{{ sessionName(s) }}</td>
+              <td class="px-4 py-3 font-medium text-teal-800 underline decoration-teal-500/40 underline-offset-2 dark:text-teal-200">
+                {{ sessionName(s) }}
+              </td>
               <td class="px-4 py-3 text-slate-500 dark:text-slate-400 tabular-nums">{{ s.date }}</td>
               <td class="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ s.durationMin }} min</td>
               <td class="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ s.layersCompleted }}</td>

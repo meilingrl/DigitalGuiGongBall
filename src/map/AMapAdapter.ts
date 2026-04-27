@@ -47,7 +47,6 @@ export class AMapAdapter implements MapAdapter {
         ? [options.center.lng, options.center.lat]
         : [108.0, 35.5],
       mapStyle: styleUrl,
-      // Remove default logo for a cleaner cultural aesthetic
       showIndoorMap: false,
     })
 
@@ -106,6 +105,14 @@ export class AMapAdapter implements MapAdapter {
 
   setFeatures(features: string[]): void {
     this.map?.setFeatures(features)
+  }
+
+  /** Sync AMap basemap language with app locale (JS API 2.0 `languageCode`). */
+  setMapLanguage(lang: 'zh' | 'en'): void {
+    if (!this.map) return
+    const code = lang === 'en' ? 'en' : 'zh'
+    const m = this.map as { setLanguageCode?: (c: string) => void }
+    m.setLanguageCode?.(code)
   }
 
   // ── Marker management ────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ export type MuseumExhibition = {
   descEn: string
   tagZh: string
   tagEn: string
+  /** 展览卡头图，相对 /public */
+  image?: string
 }
 
 export type MuseumPastWork = {
@@ -50,6 +52,7 @@ export const museumExhibitions: MuseumExhibition[] = [
     descEn: 'Multi-layer openwork and concentric shells, with scans and interactive sections.',
     tagZh: '特展',
     tagEn: 'Special',
+    image: '/materials/museum/exhibitions/1.webp',
   },
   {
     titleZh: '纹样与秩序：从开窗到几何网格',
@@ -60,6 +63,7 @@ export const museumExhibitions: MuseumExhibition[] = [
     descEn: 'Traditional clouds, ruyi, and geometric fenestration rhythm.',
     tagZh: '常设',
     tagEn: 'Permanent',
+    image: '/materials/museum/exhibitions/2.webp',
   },
   {
     titleZh: '数字孪生：馆藏三维档案公开周',
@@ -70,6 +74,7 @@ export const museumExhibitions: MuseumExhibition[] = [
     descEn: 'Time-limited HD downloads & educational licensing (mock).',
     tagZh: '活动',
     tagEn: 'Event',
+    image: '/materials/museum/exhibitions/3.webp',
   },
   {
     titleZh: '技艺活化：非遗工艺数字互动展',
@@ -80,6 +85,7 @@ export const museumExhibitions: MuseumExhibition[] = [
     descEn: 'AR overlays and live craft demos let visitors engage with traditional skills in real time.',
     tagZh: '互动',
     tagEn: 'Interactive',
+    image: '/materials/museum/exhibitions/4.webp',
   },
 ]
 
@@ -153,8 +159,8 @@ export const museumVideos: MuseumVideo[] = [
     durationEn: '05:12',
     descZh: '动画演示外层、中层与内核的关系。',
     descEn: 'Animation of outer, middle, and core relationships.',
-    poster: '/covers/video1.webp',
-    preview: '/previews/video1.mp4',
+    poster: '/materials/museum/videos/covers/museum-video-cover-01-v1.0.webp',
+    preview: '/materials/museum/videos/previews/museum-video-preview-01-v1.0.mp4',
   },
   {
     titleZh: '策展人导览：云龙纹与开窗节奏',
@@ -163,8 +169,8 @@ export const museumVideos: MuseumVideo[] = [
     durationEn: '12:40',
     descZh: '结合馆藏扫描与历史图像的对照讲解。',
     descEn: 'Scans compared with historical images.',
-    poster: '/covers/video2.webp',
-    preview: '/previews/video2.mp4',
+    poster: '/materials/museum/videos/covers/museum-video-cover-02-v1.0.webp',
+    preview: '/materials/museum/videos/previews/museum-video-preview-02-v1.0.mp4',
   },
   {
     titleZh: '数字鬼工球：从扫描到可编辑纹样',
@@ -173,8 +179,8 @@ export const museumVideos: MuseumVideo[] = [
     durationEn: '08:06',
     descZh: '工作流概览：网格清理、矢量提取与社区发布。',
     descEn: 'Mesh cleanup, vector extraction, community release.',
-    poster: '/covers/video3.webp',
-    preview: '/previews/video3.mp4',
+    poster: '/materials/museum/videos/covers/museum-video-cover-03-v1.0.webp',
+    preview: '/materials/museum/videos/previews/museum-video-preview-03-v1.0.mp4',
   },
   {
     titleZh: '工艺速写：一颗球的诞生',
@@ -183,7 +189,7 @@ export const museumVideos: MuseumVideo[] = [
     durationEn: '06:28',
     descZh: '从起稿、开窗到抛光的快节奏流程记录，适合入门观摩。',
     descEn: 'A fast walkthrough from sketching to polishing, ideal for beginners.',
-    poster: '/covers/video4.webp',
-    preview: '/previews/video4.mp4',
+    poster: '/materials/museum/videos/covers/museum-video-cover-04-v1.0.webp',
+    preview: '/materials/museum/videos/previews/museum-video-preview-04-v1.0.mp4',
   },
 ]

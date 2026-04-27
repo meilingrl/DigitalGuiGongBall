@@ -98,6 +98,8 @@ export const achievements: Achievement[] = [
 
 export type RecentSession = {
   id: string
+  /** 对应 `templates` 条目，用于从统计页跳转到工房该模板 */
+  templateId: string
   templateZh: string
   templateEn: string
   date: string
@@ -110,6 +112,7 @@ export type RecentSession = {
 export const recentSessions: RecentSession[] = [
   {
     id: 's1',
+    templateId: 'cloud-dragon',
     templateZh: '云龙献瑞',
     templateEn: 'Cloud Dragon',
     date: '2026-04-02',
@@ -120,6 +123,7 @@ export const recentSessions: RecentSession[] = [
   },
   {
     id: 's2',
+    templateId: 'celestial-sphere',
     templateZh: '星穹连环',
     templateEn: 'Celestial Spheres',
     date: '2026-04-01',
@@ -130,6 +134,7 @@ export const recentSessions: RecentSession[] = [
   },
   {
     id: 's3',
+    templateId: 'folded-cosmos',
     templateZh: '折叠宇宙',
     templateEn: 'Folded Cosmos',
     date: '2026-03-30',
@@ -140,6 +145,7 @@ export const recentSessions: RecentSession[] = [
   },
   {
     id: 's4',
+    templateId: 'ancestral-echo',
     templateZh: '古纹回响',
     templateEn: 'Ancestral Echoes',
     date: '2026-03-28',
@@ -150,6 +156,7 @@ export const recentSessions: RecentSession[] = [
   },
   {
     id: 's5',
+    templateId: 'hundred-flowers',
     templateZh: '百花争艳',
     templateEn: 'Hundred Blossoms',
     date: '2026-03-26',

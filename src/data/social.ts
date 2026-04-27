@@ -2,6 +2,8 @@ import type { TemplateDifficulty } from './content'
 
 export type FriendStatus = 'carving' | 'museum' | 'idle' | 'offline'
 
+export type FriendRegion = 'huadong' | 'huanan' | 'huabei' | 'xinan'
+
 export type FriendItem = {
   id: string
   nameZh: string
@@ -16,6 +18,8 @@ export type FriendItem = {
   currentTemplateEn?: string
   layersCarved: number
   worksCompleted: number
+  /** 区域榜筛选用（示意数据） */
+  regionCode: FriendRegion
 }
 
 export type RoomStatus = 'active' | 'waiting' | 'full'
@@ -35,8 +39,172 @@ export type RoomItem = {
   status: RoomStatus
   tagsZh: string[]
   tagsEn: string[]
-  startedAgo?: number  // minutes ago
+  startedAgo?: number
 }
+
+// Chat data types
+export type ChatChannel = {
+  id: string
+  nameZh: string
+  nameEn: string
+  type: 'room' | 'direct'
+  /** 私聊时关联好友 id（用于从好友列表打开/新建会话） */
+  friendId?: string
+  unread: number
+  lastMessageZh: string
+  lastMessageEn: string
+  lastTime: string
+  pinned?: boolean
+  muted?: boolean
+  hidden?: boolean
+}
+
+export type ChatMessage = {
+  channelId: string
+  sender: string
+  nameZh: string
+  nameEn: string
+  initials: string
+  avatarColor: string
+  textZh: string
+  textEn: string
+  time: string
+}
+
+export const chatChannels: ChatChannel[] = [
+  {
+    id: 'c1',
+    nameZh: '青玉协作坊',
+    nameEn: 'Jade Co-op',
+    type: 'room',
+    unread: 3,
+    lastMessageZh: '沈一鸣：我完成了L3层，可以开始L4了',
+    lastMessageEn: 'Yiming: I finished L3, ready for L4',
+    lastTime: '10:32',
+  },
+  {
+    id: 'c2',
+    nameZh: '纹样共创营',
+    nameEn: 'Motif Lab',
+    type: 'room',
+    unread: 0,
+    lastMessageZh: '吴子涵：新模板的花纹可以参考明代风格',
+    lastMessageEn: 'Zihan: New template motifs can reference Ming style',
+    lastTime: '09:15',
+  },
+  {
+    id: 'dm-u1',
+    nameZh: '沈一鸣',
+    nameEn: 'Yiming Shen',
+    type: 'direct',
+    friendId: 'u1',
+    unread: 1,
+    lastMessageZh: '好的，晚上一起参加快问快答！',
+    lastMessageEn: 'OK, lets do the quick quiz tonight!',
+    lastTime: '11:02',
+  },
+  {
+    id: 'c4',
+    nameZh: '知识交流群',
+    nameEn: 'Knowledge Hub',
+    type: 'room',
+    unread: 5,
+    lastMessageZh: '陈墨：分享一篇关于鬼工球历史的文章',
+    lastMessageEn: 'Mo: Sharing an article about Guigong Ball history',
+    lastTime: '08:45',
+  },
+]
+
+export const chatMessages: ChatMessage[] = [
+  {
+    channelId: 'c1',
+    sender: 'u1',
+    nameZh: '沈一鸣',
+    nameEn: 'Yiming Shen',
+    initials: '沈',
+    avatarColor: '#2d6a4f',
+    textZh: '大家进度怎么样？',
+    textEn: 'How is everyones progress?',
+    time: '10:15',
+  },
+  {
+    channelId: 'c1',
+    sender: 'u2',
+    nameZh: '林晓桐',
+    nameEn: 'Xiaotong Lin',
+    initials: '林',
+    avatarColor: '#7b4f9e',
+    textZh: '我刚进L2，这个纹样细节很多',
+    textEn: 'Just entered L2, so many details in this pattern',
+    time: '10:18',
+  },
+  {
+    channelId: 'c1',
+    sender: 'u1',
+    nameZh: '沈一鸣',
+    nameEn: 'Yiming Shen',
+    initials: '沈',
+    avatarColor: '#2d6a4f',
+    textZh: '我完成了L3层，可以开始L4了',
+    textEn: 'I finished L3, ready for L4',
+    time: '10:32',
+  },
+  {
+    channelId: 'c2',
+    sender: 'u4',
+    nameZh: '吴子涵',
+    nameEn: 'Zihan Wu',
+    initials: '吴',
+    avatarColor: '#1a6ea8',
+    textZh: '新模板的花纹可以参考明代风格',
+    textEn: 'New template motifs can reference Ming style',
+    time: '09:15',
+  },
+  {
+    channelId: 'dm-u1',
+    sender: 'u1',
+    nameZh: '沈一鸣',
+    nameEn: 'Yiming Shen',
+    initials: '沈',
+    avatarColor: '#2d6a4f',
+    textZh: '好的，晚上一起参加快问快答！',
+    textEn: 'OK, lets do the quick quiz tonight!',
+    time: '11:02',
+  },
+  {
+    channelId: 'c4',
+    sender: 'u3',
+    nameZh: '陈墨',
+    nameEn: 'Mo Chen',
+    initials: '陈',
+    avatarColor: '#b5451b',
+    textZh: '分享一篇关于鬼工球历史的文章',
+    textEn: 'Sharing an article about Guigong Ball history',
+    time: '08:45',
+  },
+  {
+    channelId: 'c4',
+    sender: 'u7',
+    nameZh: '方承泽',
+    nameEn: 'Chengze Fang',
+    initials: '方',
+    avatarColor: '#5a4e8a',
+    textZh: '太棒了，我刚在博物馆看到相关的展品',
+    textEn: 'Awesome, I just saw related exhibits in the museum',
+    time: '08:50',
+  },
+  {
+    channelId: 'c4',
+    sender: 'u3',
+    nameZh: '陈墨',
+    nameEn: 'Mo Chen',
+    initials: '陈',
+    avatarColor: '#b5451b',
+    textZh: '对了，今天的每日竞赛你参加了吗？',
+    textEn: 'By the way, did you join todays daily challenge?',
+    time: '08:52',
+  },
+]
 
 export const friends: FriendItem[] = [
   {
@@ -53,6 +221,7 @@ export const friends: FriendItem[] = [
     currentTemplateEn: 'Cloud Dragon',
     layersCarved: 22840,
     worksCompleted: 94,
+    regionCode: 'huadong',
   },
   {
     id: 'u2',
@@ -66,6 +235,7 @@ export const friends: FriendItem[] = [
     status: 'museum',
     layersCarved: 41280,
     worksCompleted: 162,
+    regionCode: 'huanan',
   },
   {
     id: 'u3',
@@ -79,6 +249,7 @@ export const friends: FriendItem[] = [
     status: 'idle',
     layersCarved: 9560,
     worksCompleted: 41,
+    regionCode: 'huadong',
   },
   {
     id: 'u4',
@@ -94,6 +265,7 @@ export const friends: FriendItem[] = [
     currentTemplateEn: 'Ancestral Echoes',
     layersCarved: 86400,
     worksCompleted: 308,
+    regionCode: 'huabei',
   },
   {
     id: 'u5',
@@ -107,6 +279,7 @@ export const friends: FriendItem[] = [
     status: 'offline',
     layersCarved: 4820,
     worksCompleted: 18,
+    regionCode: 'xinan',
   },
   {
     id: 'u6',
@@ -120,6 +293,7 @@ export const friends: FriendItem[] = [
     status: 'offline',
     layersCarved: 28100,
     worksCompleted: 115,
+    regionCode: 'huadong',
   },
   {
     id: 'u7',
@@ -133,6 +307,7 @@ export const friends: FriendItem[] = [
     status: 'idle',
     layersCarved: 13200,
     worksCompleted: 57,
+    regionCode: 'huanan',
   },
   {
     id: 'u8',
@@ -148,6 +323,7 @@ export const friends: FriendItem[] = [
     currentTemplateEn: 'Auspicious Clouds',
     layersCarved: 2140,
     worksCompleted: 9,
+    regionCode: 'huadong',
   },
 ]
 
@@ -199,40 +375,40 @@ export const rooms: RoomItem[] = [
     difficulty: 'advanced',
     layerRange: 'L1–L10',
     status: 'waiting',
-    tagsZh: ['几何', '全程开放', '高级'],
-    tagsEn: ['Geometric', 'Open join', 'Advanced'],
+    tagsZh: ['几何抽象', '开放加入', '拉片协作'],
+    tagsEn: ['Geometric', 'Open', 'Split-screen'],
   },
   {
     id: 'r4',
-    nameZh: '花卉初见',
-    nameEn: 'First Blossom',
+    nameZh: '初学互助会',
+    nameEn: 'Beginner Guild',
     hostNameZh: '谢雨晴',
     hostNameEn: 'Yuqing Xie',
-    members: 4,
-    maxMembers: 4,
-    templateZh: '百花争艳',
-    templateEn: 'Hundred Blossoms',
+    members: 2,
+    maxMembers: 5,
+    templateZh: '吉祥如意',
+    templateEn: 'Auspicious Clouds',
     difficulty: 'beginner',
-    layerRange: 'L1–L5',
-    status: 'full',
-    tagsZh: ['入门', '花卉', '满员'],
-    tagsEn: ['Beginner', 'Floral', 'Full'],
-    startedAgo: 14,
+    layerRange: 'L1–L2',
+    status: 'waiting',
+    tagsZh: ['新手友好', '教学引导', '互助'],
+    tagsEn: ['Beginner-friendly', 'Tutorial', 'Help'],
   },
   {
     id: 'r5',
-    nameZh: '折叠实验室',
-    nameEn: 'Folding Lab',
-    hostNameZh: '方承泽',
-    hostNameEn: 'Chengze Fang',
-    members: 2,
-    maxMembers: 3,
-    templateZh: '折叠宇宙',
-    templateEn: 'Folded Cosmos',
-    difficulty: 'advanced',
-    layerRange: 'L5–L12',
-    status: 'waiting',
-    tagsZh: ['抽象', '当代', '实验性'],
-    tagsEn: ['Abstract', 'Contemporary', 'Experimental'],
+    nameZh: '极限镂空挑战',
+    nameEn: 'Hollow Challenge',
+    hostNameZh: '赵芷若',
+    hostNameEn: 'Zhiruo Zhao',
+    members: 4,
+    maxMembers: 4,
+    templateZh: '百鸟朝凤',
+    templateEn: 'Birds Pay Tribute',
+    difficulty: 'master',
+    layerRange: 'L5–L20',
+    status: 'full',
+    tagsZh: ['极限挑战', '大师级', '满员'],
+    tagsEn: ['Extreme', 'Master', 'Full'],
+    startedAgo: 45,
   },
 ]

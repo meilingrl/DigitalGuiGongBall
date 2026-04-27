@@ -15,6 +15,8 @@ export function usePointerType() {
   const isTouchPrimary = useMediaQuery('(pointer: coarse)')
   const hasHover = useMediaQuery('(hover: hover)')
   const isMousePrimary = computed(() => !isTouchPrimary.value && hasHover.value)
+  /** 不应依赖悬停来发现交互：粗指针或系统报告无悬停（与 ADAPTIVE_ARCHITECTURE 一致） */
+  const lacksReliableHover = useMediaQuery('(hover: none), (pointer: coarse)')
 
-  return { isTouchPrimary, hasHover, isMousePrimary }
+  return { isTouchPrimary, hasHover, isMousePrimary, lacksReliableHover }
 }
