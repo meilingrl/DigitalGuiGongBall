@@ -10,6 +10,8 @@ export interface Product {
   descZh: string
   descEn: string
   accentColor: string
+  /** 商品图，相对 /public */
+  image: string
 }
 
 export const products: Product[] = [
@@ -23,6 +25,7 @@ export const products: Product[] = [
     descZh: '以鬼工球镂空纹样为设计元素，印制于原色帆布，简约耐用，适合日常通勤与购物。',
     descEn: 'Guigong Ball openwork motif printed on natural canvas — minimal, durable, perfect for daily use.',
     accentColor: 'from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20',
+    image: '/materials/mall/products/1.webp',
   },
   {
     id: 'p002',
@@ -34,6 +37,7 @@ export const products: Product[] = [
     descZh: '精选六种国家级非遗纹样，双面铜版纸印刷，带穿绳，适合作为阅读伴侣或礼品。',
     descEn: 'Six national-level ICH motifs on double-sided coated card with cord — ideal as a reading companion or gift.',
     accentColor: 'from-teal-50 to-teal-100 dark:from-teal-950/30 dark:to-teal-900/20',
+    image: '/materials/mall/products/2.webp',
   },
   {
     id: 'p003',
@@ -45,6 +49,7 @@ export const products: Product[] = [
     descZh: '以现代精密铸造工艺还原鬼工球三层嵌套结构，桌面摆件，限量出品，附收藏证书。',
     descEn: 'Three-shell nested structure reproduced in precision brass casting. Desktop ornament, limited edition, with collector certificate.',
     accentColor: 'from-yellow-50 to-yellow-100 dark:from-yellow-950/30 dark:to-yellow-900/20',
+    image: '/materials/mall/products/3.webp',
   },
   {
     id: 'p004',
@@ -56,6 +61,7 @@ export const products: Product[] = [
     descZh: '以苏绣传统配色为灵感，数字打印工艺呈现，尺寸90×90cm，手感细腻，四季皆宜。',
     descEn: 'Inspired by traditional Suzhou embroidery palettes — digital-print on silk-blend, 90×90cm.',
     accentColor: 'from-rose-50 to-rose-100 dark:from-rose-950/30 dark:to-rose-900/20',
+    image: '/materials/mall/products/4.webp',
   },
   {
     id: 'p005',
@@ -67,6 +73,7 @@ export const products: Product[] = [
     descZh: '本平台专属纪念徽章，硬质搪瓷工艺，直径4cm，限量30枚，正面印有鬼工球镂空纹路。',
     descEn: 'Platform-exclusive hard enamel badge, 4cm diameter, limited to 30 pieces, featuring Guigong Ball openwork.',
     accentColor: 'from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/20',
+    image: '/materials/mall/products/5.webp',
   },
 ]
 
@@ -170,6 +177,106 @@ export const quizQuestions = [
     answer: 1,
     explanationZh: '传统工艺大量依赖"身体记忆"与口耳相传的隐性知识，这类知识很难通过文字或视频完整呈现，是数字化保护的核心挑战。',
     explanationEn: 'Traditional crafts rely heavily on embodied "tacit knowledge" passed through practice and oral instruction — this is inherently difficult to capture digitally.',
+  },
+  {
+    id: 'q11',
+    questionZh: '广绣与苏绣、蜀绣、湘绣并称四大名绣，广绣最著名的针法是？',
+    questionEn: 'Guangzhou embroidery is one of the Four Famous Embroideries. What is its most famous stitch technique?',
+    optionsZh: ['平金绣', '垫高绣', '钉金绣', '十字绣'],
+    optionsEn: ['Flat gold stitch', 'Relief stitch', 'Gold-thread couching', 'Cross stitch'],
+    answer: 2,
+    explanationZh: '广绣以"钉金绣"（又称"平金绣"）著称，使用金银线在绣地上盘钉出浮雕效果，是岭南绣品的标志性技法。',
+    explanationEn: 'Guangzhou embroidery is famous for "gold-thread couching" (钉金绣), using gold and silver threads to create relief-like textures.',
+  },
+  {
+    id: 'q12',
+    questionZh: '雕漆工艺中，需要在漆层上雕刻花纹，通常需要涂多少层漆？',
+    questionEn: 'In carved lacquer (diaoqi), how many layers of lacquer are typically applied before carving?',
+    optionsZh: ['3-5层', '10-20层', '30-200层', '500层以上'],
+    optionsEn: ['3-5 layers', '10-20 layers', '30-200 layers', 'Over 500 layers'],
+    answer: 2,
+    explanationZh: '雕漆需要在胎体上反复涂漆30-200层（甚至更多），待漆层半干时进行雕刻，一件大型雕漆作品往往需要数年才能完成。',
+    explanationEn: 'Carved lacquer requires 30-200+ layers of lacquer applied to a base. A large piece can take several years to complete.',
+  },
+  {
+    id: 'q13',
+    questionZh: '景泰蓝（铜胎掐丝珐琅）的制作工序中，"点蓝"指的是？',
+    questionEn: 'In cloisonné (Jingtailan) production, what does "dianlan" (点蓝) refer to?',
+    optionsZh: ['在铜胎上掐铜丝', '将珐琅釉料填入丝格', '打磨表面使釉面平整', '对成品进行镀金'],
+    optionsEn: ['Fixing copper wires on the base', 'Filling enamel into cloisons', 'Polishing the enamel surface', 'Gilding the finished piece'],
+    answer: 1,
+    explanationZh: '"点蓝"是用特制工具将各色珐琅釉料填入铜丝掐出的格子里，是景泰蓝制作中最考验耐心与色彩感的关键工序。',
+    explanationEn: '"Dianlan" is the process of filling coloured enamel paste into the cloisons formed by copper wires — the most patience-demanding step.',
+  },
+  {
+    id: 'q14',
+    questionZh: '2006年，哪项广东传统艺术与醒狮一同入选首批国家级非遗名录？',
+    questionEn: 'In 2006, which Guangdong traditional art was listed alongside the lion dance in the first National ICH batch?',
+    optionsZh: ['岭南古琴', '粤绣', '广东剪纸', '以上都是'],
+    optionsEn: ['Lingnan guqin', 'Guangdong embroidery', 'Guangdong paper-cutting', 'All of the above'],
+    answer: 3,
+    explanationZh: '2006年首批国家级非遗名录中，岭南古琴、粤绣、广东剪纸与醒狮均入选，展现了广东丰富的非遗资源。',
+    explanationEn: 'In 2006, Lingnan guqin, Guangdong embroidery, Guangdong paper-cutting, and lion dance were all inscribed in the first batch.',
+  },
+  {
+    id: 'q15',
+    questionZh: '香云纱染整技艺中，"薯莨"的作用是？',
+    questionEn: 'In the Xiangyunsha (gambiered gauze) dyeing technique, what is the role of "shuliang" (薯莨)?',
+    optionsZh: ['作为染料赋予面料棕红色泽', '作为定色剂固着颜色', '作为柔软剂改善手感', '作为防水涂层'],
+    optionsEn: ['Dye the fabric brownish-red', 'Fix the colour as a mordant', 'Soften the fabric', 'Waterproof coating'],
+    answer: 0,
+    explanationZh: '薯莨是香云纱染整的核心天然染料，其汁液将丝绸染成独特的棕红色，再经河泥媒染后正面乌黑发亮、反面棕红。',
+    explanationEn: 'Shuliang (Dioscorea cirrhosa) provides the natural brownish-red dye. After river-mud mordanting, the fabric becomes glossy black on one side and brown-red on the other.',
+  },
+  {
+    id: 'q16',
+    questionZh: '传统广式硬木家具制作不使用以下哪种连接方式？',
+    questionEn: 'Which of the following joining methods is NOT used in traditional Cantonese hardwood furniture?',
+    optionsZh: ['榫卯结构', '木钉连接', '铁钉固定', '木楔加固'],
+    optionsEn: ['Mortise and tenon', 'Wooden dowel pins', 'Iron nails', 'Wooden wedges'],
+    answer: 2,
+    explanationZh: '广式硬木家具恪守"不用一钉"的传统，完全依靠榫卯结构、木钉和木楔完成连接，体现了精湛的木工技艺。',
+    explanationEn: 'Cantonese hardwood furniture adheres to the "no nails" tradition, relying entirely on mortise-and-tenon joints, wooden dowels, and wedges.',
+  },
+  {
+    id: 'q17',
+    questionZh: '中国篆刻艺术在哪一年被列入联合国教科文组织人类非遗代表作名录？',
+    questionEn: 'In which year was Chinese seal engraving inscribed on the UNESCO ICH Representative List?',
+    optionsZh: ['2005', '2009', '2013', '2018'],
+    optionsEn: ['2005', '2009', '2013', '2018'],
+    answer: 1,
+    explanationZh: '中国篆刻艺术于2009年与粤剧等一同被列入联合国教科文组织人类非物质文化遗产代表作名录。',
+    explanationEn: 'Chinese seal engraving was inscribed on the UNESCO Representative List in 2009, alongside Cantonese opera and others.',
+  },
+  {
+    id: 'q18',
+    questionZh: '鬼工球的英文名称"Guigong Ball"中，"鬼工"二字的含义是？',
+    questionEn: 'In "Guigong Ball", what does "Guigong" (鬼工) literally mean?',
+    optionsZh: ['鬼斧神工，形容工艺超凡绝伦', '鬼神工匠，指古代神秘匠人', '鬼魂工艺，指祭祀用品', '鬼魅工序，指隐秘工艺'],
+    optionsEn: ['Supernatural craftsmanship', 'Ghost craftsman', 'Spirit ritual object', 'Secret technique'],
+    answer: 0,
+    explanationZh: '"鬼工"意为"鬼斧神工"，形容雕刻技艺精妙至极，仿佛非人力所能为，是对象牙球工艺的至高赞誉。',
+    explanationEn: '"Guigong" means "supernatural workmanship" — the ultimate praise for ivory ball carving, suggesting it is so exquisite it seems beyond human capability.',
+  },
+  {
+    id: 'q19',
+    questionZh: '以下哪项广东非遗项目属于"传统音乐"类别？',
+    questionEn: 'Which of the following Guangdong ICH items belongs to the "traditional music" category?',
+    optionsZh: ['潮州木雕', '广东音乐', '石湾陶塑', '端砚制作'],
+    optionsEn: ['Chaozhou wood carving', 'Guangdong music', 'Shiwan pottery', 'Duan inkstone making'],
+    answer: 1,
+    explanationZh: '广东音乐（又称粤乐）是以高胡、扬琴等为主要乐器的传统丝竹乐，2006年入选首批国家级非遗。',
+    explanationEn: 'Guangdong music (Yue music) features gaohu fiddle and yangqin dulcimer — it was inscribed in the first national ICH batch in 2006.',
+  },
+  {
+    id: 'q20',
+    questionZh: '数字非遗保护中，"知识图谱"技术的主要作用是？',
+    questionEn: 'In digital ICH preservation, what is the primary function of "knowledge graph" technology?',
+    optionsZh: ['制作3D模型', '建立技艺、传承人与文化背景之间的语义关联', '进行虚拟现实展示', '存储高清图像'],
+    optionsEn: ['Creating 3D models', 'Building semantic links between techniques, inheritors, and cultural context', 'VR exhibitions', 'Storing HD images'],
+    answer: 1,
+    explanationZh: '知识图谱通过建立技艺→传承人→历史背景→地域文化的语义网络，让非遗知识从孤立条目转变为可推理、可关联的网络结构。',
+    explanationEn: 'Knowledge graphs build semantic networks linking techniques, inheritors, historical context, and regional culture — transforming isolated entries into inferable structures.',
   },
 ]
 

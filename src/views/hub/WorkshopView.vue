@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import TemplateCard from '../../components/TemplateCard.vue'
 import {
   templates,
@@ -192,6 +193,76 @@ const hasActiveFilter = computed(
     activeDifficulty.value !== 'all' ||
     activeStyle.value !== 'all',
 )
+
+/* ── 单块玻璃 + 分段滑块高亮（无 per-control SVG 折射）──────────── */
+interface SegHighlight {
+  left: number
+  width: number
+  ready: boolean
+}
+
+function emptyHl(): SegHighlight {
+  return { left: 0, width: 0, ready: false }
+}
+
+const categoryTrackRef = ref<HTMLElement | null>(null)
+const difficultyTrackRef = ref<HTMLElement | null>(null)
+const styleTrackRef = ref<HTMLElement | null>(null)
+
+const catHl = ref<SegHighlight>(emptyHl())
+const diffHl = ref<SegHighlight>(emptyHl())
+const styleHl = ref<SegHighlight>(emptyHl())
+
+function offsetLeftWithin(btn: HTMLElement, ancestor: HTMLElement): number {
+  let left = 0
+  let n: HTMLElement | null = btn
+  while (n && n !== ancestor) {
+    left += n.offsetLeft
+    n = n.offsetParent as HTMLElement | null
+  }
+  return n === ancestor ? left : 0
+}
+
+function measureSeg(
+  track: HTMLElement | null,
+  active: string,
+  dataAttr: string,
+  out: Ref<SegHighlight>,
+) {
+  if (!track) {
+    out.value = emptyHl()
+    return
+  }
+  const btn = track.querySelector(`[${dataAttr}="${active}"]`) as HTMLElement | null
+  if (!btn) {
+    out.value = emptyHl()
+    return
+  }
+  out.value = {
+    left: offsetLeftWithin(btn, track),
+    width: btn.offsetWidth,
+    ready: true,
+  }
+}
+
+function refreshSegmentHighlights() {
+  measureSeg(categoryTrackRef.value, activeCategory.value, 'data-cat', catHl)
+  measureSeg(difficultyTrackRef.value, activeDifficulty.value, 'data-diff', diffHl)
+  measureSeg(styleTrackRef.value, activeStyle.value, 'data-style', styleHl)
+}
+
+watch(
+  [activeCategory, activeDifficulty, activeStyle, () => store.locale],
+  () => nextTick(refreshSegmentHighlights),
+)
+
+onMounted(() => {
+  nextTick(refreshSegmentHighlights)
+})
+
+useResizeObserver(categoryTrackRef, () => nextTick(refreshSegmentHighlights))
+useResizeObserver(difficultyTrackRef, () => nextTick(refreshSegmentHighlights))
+useResizeObserver(styleTrackRef, () => nextTick(refreshSegmentHighlights))
 </script>
 
 <template>
@@ -203,145 +274,199 @@ const hasActiveFilter = computed(
       <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{{ t.workshopBody }}</p>
     </header>
 
-    <!-- Search + Sort row -->
-    <div class="mb-4 flex flex-wrap items-center gap-3">
-      <div class="relative flex-1 min-w-48">
-        <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-        </svg>
-        <input
-          v-model="searchQuery"
-          type="search"
-          :placeholder="t.workshopSearch"
-          class="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
-        />
-      </div>
-      <!-- Custom sort dropdown -->
-      <div ref="sortDropdownRef" class="relative shrink-0">
-        <button
-          type="button"
-          class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition hover:border-teal-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-teal-600"
-          @click="sortOpen = !sortOpen"
-        >
-          <svg class="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M6 12h12M9 17h6" />
-          </svg>
-          <span>{{ t[sortOptions.find(o => o.key === sortKey)?.labelKey ?? 'workshopSortPopular'] }}</span>
-          <svg
-            class="h-3.5 w-3.5 text-slate-400 transition-transform duration-200 dark:text-slate-500"
-            :class="sortOpen ? 'rotate-180' : ''"
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        <Transition
-          enter-active-class="transition duration-150 ease-out"
-          enter-from-class="opacity-0 translate-y-1 scale-95"
-          enter-to-class="opacity-100 translate-y-0 scale-100"
-          leave-active-class="transition duration-100 ease-in"
-          leave-from-class="opacity-100 translate-y-0 scale-100"
-          leave-to-class="opacity-0 translate-y-1 scale-95"
-        >
-          <div
-            v-if="sortOpen"
-            class="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[156px] origin-top-right rounded-2xl border border-slate-200 bg-white py-1.5 shadow-lg ring-1 ring-slate-900/5 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-700/60"
-          >
-            <button
-              v-for="opt in sortOptions"
-              :key="opt.key"
-              type="button"
-              class="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm transition-colors"
-              :class="
-                sortKey === opt.key
-                  ? 'text-teal-700 dark:text-teal-400 bg-teal-50/70 dark:bg-teal-950/40 font-medium'
-                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-              "
-              @click="sortKey = opt.key; sortOpen = false"
-            >
-              <span
-                class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition"
-                :class="
-                  sortKey === opt.key
-                    ? 'border-teal-600 dark:border-teal-400'
-                    : 'border-slate-300 dark:border-slate-600'
-                "
-              >
-                <span
-                  v-if="sortKey === opt.key"
-                  class="h-2 w-2 rounded-full bg-teal-600 dark:bg-teal-400"
-                />
-              </span>
-              {{ t[opt.labelKey] }}
-            </button>
+    <!-- ── 单块磨砂玻璃：内部分段滑块（Apple 式）────────────────── -->
+    <div
+      class="workshop-glass-panel sticky z-20"
+      :class="store.theme === 'dark' ? 'workshop-glass-panel--dark' : 'workshop-glass-panel--light'"
+    >
+      <div class="workshop-glass-panel__inner relative z-20">
+        <!-- 搜索 + 排序 -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="workshop-glass-panel__field relative min-w-0 flex-1">
+            <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              v-model="searchQuery"
+              type="search"
+              :placeholder="t.workshopSearch"
+              class="w-full border-0 bg-transparent py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none ring-0 focus:ring-0 dark:text-slate-100 dark:placeholder-slate-500"
+            />
           </div>
-        </Transition>
-      </div>
-    </div>
-
-    <!-- Category pills -->
-    <div class="mb-4 flex flex-wrap gap-2">
-      <button
-        v-for="cat in categories"
-        :key="cat.key"
-        type="button"
-        class="rounded-full px-3 py-1 text-xs font-medium transition"
-        :class="
-          activeCategory === cat.key
-            ? 'bg-teal-700 text-white'
-            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-        "
-        @click="activeCategory = cat.key as typeof activeCategory"
-      >
-        {{ t[cat.labelKey] }}
-      </button>
-    </div>
-
-    <!-- Difficulty + Style filters -->
-    <div class="mb-5 flex flex-wrap gap-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-500 dark:text-slate-400">{{ t.difficulty }}</span>
-        <div class="flex gap-1">
-          <button
-            v-for="d in difficulties"
-            :key="d.key"
-            type="button"
-            class="rounded-lg px-2.5 py-1 text-xs transition"
-            :class="
-              activeDifficulty === d.key
-                ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-            "
-            @click="activeDifficulty = d.key as typeof activeDifficulty"
-          >
-            {{ t[d.labelKey] }}
-          </button>
+          <div ref="sortDropdownRef" class="relative shrink-0">
+            <button
+              type="button"
+              class="workshop-glass-panel__field flex items-center gap-2 px-3 py-2.5 text-sm text-slate-700 outline-none transition dark:text-slate-200"
+              @click="sortOpen = !sortOpen"
+            >
+              <svg class="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M6 12h12M9 17h6" />
+              </svg>
+              <span class="whitespace-nowrap">{{ t[sortOptions.find(o => o.key === sortKey)?.labelKey ?? 'workshopSortPopular'] }}</span>
+              <svg
+                class="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 dark:text-slate-500"
+                :class="sortOpen ? 'rotate-180' : ''"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <Transition
+              enter-active-class="transition duration-150 ease-out"
+              enter-from-class="opacity-0 translate-y-1 scale-95"
+              enter-to-class="opacity-100 translate-y-0 scale-100"
+              leave-active-class="transition duration-100 ease-in"
+              leave-from-class="opacity-100 translate-y-0 scale-100"
+              leave-to-class="opacity-0 translate-y-1 scale-95"
+            >
+              <div
+                v-if="sortOpen"
+                class="absolute right-0 top-[calc(100%+8px)] z-30 min-w-[168px] origin-top-right rounded-2xl border border-slate-200/90 bg-white/95 py-1.5 shadow-xl backdrop-blur-2xl dark:border-slate-600/80 dark:bg-slate-900/95"
+              >
+                <button
+                  v-for="opt in sortOptions"
+                  :key="opt.key"
+                  type="button"
+                  class="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm transition-colors"
+                  :class="
+                    sortKey === opt.key
+                      ? 'text-teal-700 dark:text-teal-400 bg-teal-50/80 dark:bg-teal-950/45 font-medium'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100/90 dark:hover:bg-slate-800/60'
+                  "
+                  @click="sortKey = opt.key; sortOpen = false"
+                >
+                  <span
+                    class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition"
+                    :class="
+                      sortKey === opt.key
+                        ? 'border-teal-600 dark:border-teal-400'
+                        : 'border-slate-300 dark:border-slate-600'
+                    "
+                  >
+                    <span
+                      v-if="sortKey === opt.key"
+                      class="h-2 w-2 rounded-full bg-teal-600 dark:bg-teal-400"
+                    />
+                  </span>
+                  {{ t[opt.labelKey] }}
+                </button>
+              </div>
+            </Transition>
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-500 dark:text-slate-400">{{ store.locale === 'zh' ? '风格' : 'Style' }}</span>
-        <div class="flex gap-1">
-          <button
-            v-for="s in styles"
-            :key="s.key"
-            type="button"
-            class="rounded-lg px-2.5 py-1 text-xs transition"
-            :class="
-              activeStyle === s.key
-                ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-            "
-            @click="activeStyle = s.key as typeof activeStyle"
+
+        <!-- 主题：单轨道 + 滑动高亮 -->
+        <div class="mt-3 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            ref="categoryTrackRef"
+            class="workshop-seg-track relative inline-flex rounded-full p-1 ring-1 ring-inset ring-slate-900/[0.06] dark:ring-white/[0.08]"
           >
-            {{ t[s.labelKey] }}
-          </button>
+            <div
+              class="workshop-seg-pill pointer-events-none absolute bottom-1 top-1 rounded-full shadow-sm transition-[left,width,opacity] duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)] dark:shadow-[0_1px_12px_rgba(0,0,0,0.35)]"
+              :style="{
+                left: `${catHl.left}px`,
+                width: `${catHl.width}px`,
+                opacity: catHl.ready ? 1 : 0,
+              }"
+            />
+            <div class="z-10 flex flex-nowrap gap-0.5">
+              <button
+                v-for="cat in categories"
+                :key="cat.key"
+                type="button"
+                class="shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors duration-200"
+                :class="
+                  activeCategory === cat.key
+                    ? 'text-slate-900 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                "
+                :data-cat="cat.key"
+                @click="activeCategory = cat.key as typeof activeCategory"
+              >
+                {{ t[cat.labelKey] }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 难度 + 风格：各一条滑块轨道 -->
+        <div class="mt-3 space-y-2.5">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="w-10 shrink-0 text-[11px] font-medium text-slate-500 dark:text-slate-400">{{ t.difficulty }}</span>
+            <div class="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div
+                ref="difficultyTrackRef"
+                class="workshop-seg-track relative inline-flex rounded-xl p-1 ring-1 ring-inset ring-slate-900/[0.06] dark:ring-white/[0.08]"
+              >
+                <div
+                  class="workshop-seg-pill pointer-events-none absolute bottom-1 top-1 rounded-lg shadow-sm transition-[left,width,opacity] duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)] dark:shadow-[0_1px_10px_rgba(0,0,0,0.35)]"
+                  :style="{
+                    left: `${diffHl.left}px`,
+                    width: `${diffHl.width}px`,
+                    opacity: diffHl.ready ? 1 : 0,
+                  }"
+                />
+                <div class="z-10 flex flex-nowrap gap-0.5">
+                  <button
+                    v-for="d in difficulties"
+                    :key="d.key"
+                    type="button"
+                    class="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors duration-200"
+                    :class="
+                      activeDifficulty === d.key
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                    "
+                    :data-diff="d.key"
+                    @click="activeDifficulty = d.key as typeof activeDifficulty"
+                  >
+                    {{ t[d.labelKey] }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="w-10 shrink-0 text-[11px] font-medium text-slate-500 dark:text-slate-400">{{ store.locale === 'zh' ? '风格' : 'Style' }}</span>
+            <div class="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div
+                ref="styleTrackRef"
+                class="workshop-seg-track relative inline-flex rounded-xl p-1 ring-1 ring-inset ring-slate-900/[0.06] dark:ring-white/[0.08]"
+              >
+                <div
+                  class="workshop-seg-pill pointer-events-none absolute bottom-1 top-1 rounded-lg shadow-sm transition-[left,width,opacity] duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)] dark:shadow-[0_1px_10px_rgba(0,0,0,0.35)]"
+                  :style="{
+                    left: `${styleHl.left}px`,
+                    width: `${styleHl.width}px`,
+                    opacity: styleHl.ready ? 1 : 0,
+                  }"
+                />
+                <div class="z-10 flex flex-nowrap gap-0.5">
+                  <button
+                    v-for="s in styles"
+                    :key="s.key"
+                    type="button"
+                    class="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors duration-200"
+                    :class="
+                      activeStyle === s.key
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                    "
+                    :data-style="s.key"
+                    @click="activeStyle = s.key as typeof activeStyle"
+                  >
+                    {{ t[s.labelKey] }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Result count + reset -->
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-4 mt-4 flex items-center justify-between">
       <p class="text-xs text-slate-500 dark:text-slate-400">
         {{ filtered.length }} {{ t.workshopResultCount }}
       </p>
@@ -577,3 +702,80 @@ const hasActiveFilter = computed(
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+/* 单块吸顶磨砂玻璃（整块容器折射一次背景，内部分段滑块） */
+.workshop-glass-panel {
+  top: 0;
+  margin-left: calc(-1 * var(--space-lg));
+  margin-right: calc(-1 * var(--space-lg));
+  padding: 8px var(--space-lg) 12px;
+  margin-bottom: 0;
+}
+
+.workshop-glass-panel__inner {
+  border-radius: 22px;
+  padding: 14px 14px 12px;
+  -webkit-backdrop-filter: blur(28px) saturate(1.45);
+  backdrop-filter: blur(28px) saturate(1.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 12px 40px rgba(15, 23, 42, 0.08);
+}
+
+.workshop-glass-panel--light .workshop-glass-panel__inner {
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 12px 40px rgba(15, 23, 42, 0.07);
+}
+
+.workshop-glass-panel--dark .workshop-glass-panel__inner {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.workshop-glass-panel__field {
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.workshop-glass-panel--dark .workshop-glass-panel__field {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 分段轨道槽 */
+.workshop-glass-panel--light .workshop-seg-track {
+  background: rgba(15, 23, 42, 0.045);
+}
+
+.workshop-glass-panel--dark .workshop-seg-track {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* 滑动选中块：亮面小 pill，无厚色边 */
+.workshop-glass-panel--light .workshop-seg-pill {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.workshop-glass-panel--dark .workshop-seg-pill {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+@media (max-width: 1023px) {
+  .workshop-glass-panel {
+    top: 0;
+    margin-left: calc(-1 * var(--space-md));
+    margin-right: calc(-1 * var(--space-md));
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+  }
+}
+</style>

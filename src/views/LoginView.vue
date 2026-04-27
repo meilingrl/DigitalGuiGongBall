@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import WavyLines from '../components/WavyLines.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
-import logoUrl from '../assets/guigong-logo.png'
+import logoUrl from '../assets/materials/images/branding/brand-logo-primary-v1.0.png'
 
 const store = useAppStore()
 const router = useRouter()
@@ -45,15 +45,22 @@ function onSubmit() {
           : 'border-slate-200/90 bg-white/80 shadow-slate-900/10'
       "
     >
-      <!-- 左侧：品牌与 Logo（资源：src/assets/guigong-logo.png） -->
+      <!-- 左侧：品牌与 Logo（资源：src/assets/materials/images/branding/brand-logo-primary-v1.0.png） -->
       <div
         class="flex flex-col items-center justify-center px-8 py-10 text-center md:py-12"
       >
         <img
           :src="logoUrl"
-          class="mb-5 h-[100px] w-[100px] shrink-0 object-contain dark:invert"
+          class="mb-5 h-[100px] w-[100px] shrink-0 object-contain transition"
+          :class="
+            store.theme === 'dark'
+              ? 'invert brightness-110'
+              : 'mix-blend-multiply'
+          "
           :alt="
-            store.locale === 'zh' ? '数字鬼工球标志' : 'Digital Guigong Ball logo'
+            store.locale === 'zh'
+              ? '数字鬼工球标志'
+              : 'Digital Guigong Ball logo'
           "
         />
         <h1 class="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
@@ -78,8 +85,8 @@ function onSubmit() {
         class="flex w-full flex-col items-center justify-center border-t px-8 py-10 md:border-l md:border-t-0 md:py-12"
         :class="
           store.theme === 'dark'
-            ? 'border-slate-700/80 bg-slate-950/40'
-            : 'border-slate-200/90 bg-white/60'
+            ? 'border-slate-700/80'
+            : 'border-slate-200/90'
         "
       >
         <div class="w-full max-w-[320px]">

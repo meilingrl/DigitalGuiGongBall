@@ -11,15 +11,17 @@
 
 ### 1.1 当前技术栈
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| UI 框架 | Vue 3 Composition API | ^3.5 |
-| 构建工具 | Vite | ^8 |
-| 类型系统 | TypeScript | — |
-| 样式 | Tailwind CSS（class 深色模式） | ^3 |
-| 状态管理 | Pinia | ^3 |
-| 路由 | Vue Router | ^5 |
-| 组件库 | 无（纯手写 SFC） | — |
+
+| 层级    | 技术                       | 版本   |
+| ----- | ------------------------ | ---- |
+| UI 框架 | Vue 3 Composition API    | ^3.5 |
+| 构建工具  | Vite                     | ^8   |
+| 类型系统  | TypeScript               | —    |
+| 样式    | Tailwind CSS（class 深色模式） | ^3   |
+| 状态管理  | Pinia                    | ^3   |
+| 路由    | Vue Router               | ^5   |
+| 组件库   | 无（纯手写 SFC）               | —    |
+
 
 ### 1.2 现有视频区块分析
 
@@ -44,48 +46,58 @@
 
 ### 2.1 资源解耦策略
 
-| 要求 | 可达性 | 评估说明 |
-|------|--------|----------|
-| 封面图 + 微缩预览视频双资源模式 | ✅ **完全可达** | 需在 `MuseumVideo` 类型扩展 `poster?` 和 `preview?` 字段，使用本地路径（`/public/videos/...`） |
-| 初始仅渲染静态封面 | ✅ **完全可达** | `<video>` 用 `v-if="isHovering"` 条件渲染，未触发时 DOM 中不存在 video 节点 |
-| 按需加载：交互触发才请求视频资源 | ✅ **完全可达** | 结合 `v-if` + `:src="hoverActivated ? preview : undefined"` 实现动态 src 绑定，`preload="none"` 防止提前加载 |
+
+| 要求                | 可达性        | 评估说明                                                                                          |
+| ----------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| 封面图 + 微缩预览视频双资源模式 | ✅ **完全可达** | 需在 `MuseumVideo` 类型扩展 `poster?` 和 `preview?` 字段，使用本地路径（`/public/videos/...`）                  |
+| 初始仅渲染静态封面         | ✅ **完全可达** | `<video>` 用 `v-if="isHovering"` 条件渲染，未触发时 DOM 中不存在 video 节点                                   |
+| 按需加载：交互触发才请求视频资源  | ✅ **完全可达** | 结合 `v-if` + `:src="hoverActivated ? preview : undefined"` 实现动态 src 绑定，`preload="none"` 防止提前加载 |
+
 
 **约束说明**：当前为本地文件资源（非 CDN），无需考虑网络请求优化，主要目标是避免浏览器在页面初始化时批量解码视频文件。
 
 ### 2.2 交互状态机管理
 
-| 要求 | 可达性 | 评估说明 |
-|------|--------|----------|
+
+| 要求                     | 可达性        | 评估说明                                                                                            |
+| ---------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
 | Hover 防误触延迟（200–400ms） | ✅ **完全可达** | `@mouseenter` 触发 `setTimeout(300ms)`，计时器 ID 存入 `ref<number>`；`@mouseleave` 立即 `clearTimeout` 取消 |
-| 鼠标离开立即重置到第一帧 | ✅ **完全可达** | `videoRef.value.pause(); videoRef.value.currentTime = 0` |
-| 静音自动循环播放 | ✅ **完全可达** | `<video muted loop playsinline>`，`videoRef.value.play()` 在延迟确认后调用 |
-| 移出后重置帧位置 | ✅ **完全可达** | `currentTime = 0` 重置，配合 `v-if` 卸载 DOM 节点，下次悬停从头开始 |
+| 鼠标离开立即重置到第一帧           | ✅ **完全可达** | `videoRef.value.pause(); videoRef.value.currentTime = 0`                                        |
+| 静音自动循环播放               | ✅ **完全可达** | `<video muted loop playsinline>`，`videoRef.value.play()` 在延迟确认后调用                               |
+| 移出后重置帧位置               | ✅ **完全可达** | `currentTime = 0` 重置，配合 `v-if` 卸载 DOM 节点，下次悬停从头开始                                               |
+
 
 **风险点**：移动端无 `hover` 事件，触摸设备需降级为点击态。当前 Hub 布局以桌面为主，移动端降级策略可暂不实现（标注为待办）。
 
 ### 2.3 视觉渲染规范
 
-| 要求 | 可达性 | 评估说明 |
-|------|--------|----------|
-| 封面与视频切换无白屏/跳变 | ✅ **完全可达** | 封面 `<img>` 与 `<video>` 使用绝对定位叠层（`absolute inset-0`），通过 CSS `opacity` + `transition` 实现交叉淡入淡出 |
-| 容器比例锁定（Cover 填充） | ✅ **完全可达** | 容器使用 Tailwind `aspect-video`（即 `aspect-ratio: 16/9`），子元素 `object-cover w-full h-full` |
-| 不同分辨率下内容不变形 | ✅ **完全可达** | `aspect-ratio` 锁定宽高比，`object-fit: cover` 保证填充不变形，已有现成 Tailwind 类 |
+
+| 要求               | 可达性        | 评估说明                                                                                         |
+| ---------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| 封面与视频切换无白屏/跳变    | ✅ **完全可达** | 封面 `<img>` 与 `<video>` 使用绝对定位叠层（`absolute inset-0`），通过 CSS `opacity` + `transition` 实现交叉淡入淡出 |
+| 容器比例锁定（Cover 填充） | ✅ **完全可达** | 容器使用 Tailwind `aspect-video`（即 `aspect-ratio: 16/9`），子元素 `object-cover w-full h-full`        |
+| 不同分辨率下内容不变形      | ✅ **完全可达** | `aspect-ratio` 锁定宽高比，`object-fit: cover` 保证填充不变形，已有现成 Tailwind 类                             |
+
 
 ### 2.4 性能优化
 
-| 要求 | 可达性 | 评估说明 |
-|------|--------|----------|
-| 非活跃状态对渲染引擎友好 | ✅ **完全可达** | 使用 `v-if` 而非 `v-show`，非悬停状态下 video DOM 节点完全不存在于文档树中 |
+
+| 要求                           | 可达性        | 评估说明                                                                  |
+| ---------------------------- | ---------- | --------------------------------------------------------------------- |
+| 非活跃状态对渲染引擎友好                 | ✅ **完全可达** | 使用 `v-if` 而非 `v-show`，非悬停状态下 video DOM 节点完全不存在于文档树中                   |
 | `preload="none"` + 动态 src 绑定 | ✅ **完全可达** | `<video preload="none" :src="videoSrc">` 结合 `v-if` 双重保障，仅在悬停确认后赋值 src |
-| 组件封装性 | ✅ **完全可达** | 独立 SFC `VideoCard.vue`，Props 注入数据，内部管理所有状态，外部无需感知实现细节 |
+| 组件封装性                        | ✅ **完全可达** | 独立 SFC `VideoCard.vue`，Props 注入数据，内部管理所有状态，外部无需感知实现细节                 |
+
 
 **不可达 / 暂缓项**：
 
-| 要求 | 状态 | 原因 |
-|------|------|------|
+
+| 要求                               | 状态        | 原因                                   |
+| -------------------------------- | --------- | ------------------------------------ |
 | IntersectionObserver 懒加载（视口外不预热） | ⚠️ **暂缓** | 当前视频区块在单页内，无虚拟滚动需求；首期实现 hover 懒加载已足够 |
-| 移动端触摸态交互 | ⚠️ **暂缓** | Hub 主要面向桌面，移动版交互标注待办 |
-| 视频加载进度 / 骨架屏 | ⚠️ **暂缓** | 本地资源加载极快，无需 loading 态；远程资源接入时再补充 |
+| 移动端触摸态交互                         | ⚠️ **暂缓** | Hub 主要面向桌面，移动版交互标注待办                 |
+| 视频加载进度 / 骨架屏                     | ⚠️ **暂缓** | 本地资源加载极快，无需 loading 态；远程资源接入时再补充     |
+
 
 ---
 
@@ -336,13 +348,15 @@ UI 淡出：   :class="isVideoVisible ? 'opacity-0 pointer-events-none' : 'opaci
 
 ### 6.1 改动范围
 
-| 文件 | 改动类型 | 说明 |
-|------|----------|------|
-| `src/components/VideoCard.vue` | **新建** | 视频卡片组件主体 |
-| `src/data/museum.ts` | **小幅扩展** | `MuseumVideo` 类型增加 `poster?` / `preview?` 字段；`museumVideos` 数组填入资源路径 |
-| `src/views/hub/MuseumView.vue` | **局部替换** | 视频区块内联 `<article>` 替换为 `<VideoCard>` 组件调用 |
-| `public/covers/` | **新增目录** | 存放封面 WebP 图 |
-| `public/previews/` | **新增目录** | 存放预览 MP4 视频 |
+
+| 文件                             | 改动类型     | 说明                                                                   |
+| ------------------------------ | -------- | -------------------------------------------------------------------- |
+| `src/components/VideoCard.vue` | **新建**   | 视频卡片组件主体                                                             |
+| `src/data/museum.ts`           | **小幅扩展** | `MuseumVideo` 类型增加 `poster?` / `preview?` 字段；`museumVideos` 数组填入资源路径 |
+| `src/views/hub/MuseumView.vue` | **局部替换** | 视频区块内联 `<article>` 替换为 `<VideoCard>` 组件调用                            |
+| `public/covers/`               | **新增目录** | 存放封面 WebP 图                                                          |
+| `public/previews/`             | **新增目录** | 存放预览 MP4 视频                                                          |
+
 
 ### 6.2 MuseumView 调用方式
 
@@ -391,17 +405,20 @@ UI 淡出：   :class="isVideoVisible ? 'opacity-0 pointer-events-none' : 'opaci
 
 ## 九、实现优先级
 
-| 优先级 | 功能点 |
-|--------|--------|
-| P0 | 数据模型扩展（`poster` / `preview` 字段） |
-| P0 | 300ms 防误触 Hover 延迟逻辑 |
-| P0 | `v-if` + `preload="none"` 按需加载 |
-| P0 | 封面 / 视频 opacity 层叠交叉淡入淡出 |
-| P0 | `aspect-video` + `object-cover` 比例锁定 |
-| P1 | 离开后 `currentTime = 0` 重置首帧 |
-| P1 | 暗色模式样式适配 |
-| P2 | 缺省封面时的渐变占位降级处理 |
-| P2 | 无媒体资源时完全退化为当前占位样式（向后兼容） |
-| P3 | 键盘交互 / 无障碍补全 |
-| 暂缓 | 移动端触摸态交互 |
-| 暂缓 | IntersectionObserver 视口懒加载 |
+
+| 优先级 | 功能点                                  |
+| --- | ------------------------------------ |
+| P0  | 数据模型扩展（`poster` / `preview` 字段）      |
+| P0  | 300ms 防误触 Hover 延迟逻辑                 |
+| P0  | `v-if` + `preload="none"` 按需加载       |
+| P0  | 封面 / 视频 opacity 层叠交叉淡入淡出             |
+| P0  | `aspect-video` + `object-cover` 比例锁定 |
+| P1  | 离开后 `currentTime = 0` 重置首帧           |
+| P1  | 暗色模式样式适配                             |
+| P2  | 缺省封面时的渐变占位降级处理                       |
+| P2  | 无媒体资源时完全退化为当前占位样式（向后兼容）              |
+| P3  | 键盘交互 / 无障碍补全                         |
+| 暂缓  | 移动端触摸态交互                             |
+| 暂缓  | IntersectionObserver 视口懒加载           |
+
+

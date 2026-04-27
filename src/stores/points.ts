@@ -4,6 +4,8 @@ import { defineStore } from 'pinia'
 export const TASK_IDS = {
   FIRST_VISIT: 'first-visit',
   QUIZ_COMPLETE: 'quiz-complete',
+  DAILY_QUIZ: 'daily-quiz',
+  QUICK_BATTLE: 'quick-battle',
   WORK_SUBMIT: 'work-submit',
   EVENT_CHECKIN: 'event-checkin',
 } as const
@@ -39,9 +41,29 @@ export const usePointsStore = defineStore('points', () => {
       id: TASK_IDS.QUIZ_COMPLETE,
       labelZh: '完成非遗知识竞赛',
       labelEn: 'Complete ICH Quiz',
-      hintZh: '前往文化博物馆参加答题',
-      hintEn: 'Visit Museum to take the quiz',
+      hintZh: '在「交流社区」→「竞赛」完成任意一轮答题',
+      hintEn: 'Finish any quiz round under Community → Arena',
       points: 50,
+      completed: false,
+      claimed: false,
+    },
+    {
+      id: TASK_IDS.DAILY_QUIZ,
+      labelZh: '完成每日非遗挑战',
+      labelEn: 'Complete Daily ICH Challenge',
+      hintZh: '在「交流社区」→「竞赛」完成每日竞赛',
+      hintEn: 'Complete the daily race under Community → Arena',
+      points: 30,
+      completed: false,
+      claimed: false,
+    },
+    {
+      id: TASK_IDS.QUICK_BATTLE,
+      labelZh: '完成快问快答',
+      labelEn: 'Complete Quick Battle',
+      hintZh: '在「交流社区」→「竞赛」完成一轮快问快答',
+      hintEn: 'Complete a Quick Battle round under Community → Arena',
+      points: 25,
       completed: false,
       claimed: false,
     },
@@ -80,6 +102,10 @@ export const usePointsStore = defineStore('points', () => {
     const task = tasks.value.find((t) => t.id === id)
     if (task && !task.completed) {
       task.completed = true
+      if (id === TASK_IDS.DAILY_QUIZ || id === TASK_IDS.QUICK_BATTLE) {
+        task.claimed = true
+        balance.value += task.points
+      }
     }
   }
 

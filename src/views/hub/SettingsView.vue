@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '../../stores/app'
+import { useExploreProfileStore, type TransportMode } from '../../stores/exploreProfile'
 
 const store = useAppStore()
+const exploreProfileStore = useExploreProfileStore()
+exploreProfileStore.hydrateFromStorage()
 
 // ── active section ────────────────────────────────────────────────────────────
-type Section = 'account' | 'binding' | 'privacy' | 'preferences' | 'display'
+type Section = 'account' | 'binding' | 'privacy' | 'preferences' | 'feedback' | 'display'
 const activeSection = ref<Section>('account')
 
 const sections: { key: Section; icon: string; labelZh: string; labelEn: string }[] = [
@@ -13,6 +16,7 @@ const sections: { key: Section; icon: string; labelZh: string; labelEn: string }
   { key: 'binding',     icon: '🔗', labelZh: '绑定信息',   labelEn: 'Linked Accounts' },
   { key: 'privacy',     icon: '🛡️', labelZh: '隐私设置',   labelEn: 'Privacy' },
   { key: 'preferences', icon: '🎛️', labelZh: '偏好设置',   labelEn: 'Preferences' },
+  { key: 'feedback',    icon: '💬', labelZh: '意见反馈',   labelEn: 'Feedback' },
   { key: 'display',     icon: '🌐', labelZh: '语言与显示', labelEn: 'Language & Display' },
 ]
 
@@ -28,6 +32,14 @@ const currentPwd = ref('')
 const newPwd = ref('')
 const confirmPwd = ref('')
 const displayNameInput = ref(store.displayName)
+const presetNameInput = ref(exploreProfileStore.preset.contactName)
+const presetPhoneInput = ref(exploreProfileStore.preset.phone)
+const presetEmailInput = ref(exploreProfileStore.preset.email)
+const presetEmergencyInput = ref(exploreProfileStore.preset.emergencyContact)
+const presetTransport = ref<TransportMode>(exploreProfileStore.preset.transportMode)
+const presetAdults = ref(exploreProfileStore.preset.adults)
+const presetChildren = ref(exploreProfileStore.preset.children)
+const presetSaved = ref(false)
 
 // ── binding section state ─────────────────────────────────────────────────────
 const emailInput = ref('l**n@example.com')
@@ -64,6 +76,91 @@ const toolOptions: { key: typeof defaultTool.value; labelZh: string; labelEn: st
   { key: 'polish',    labelZh: '抛光',   labelEn: 'Polish'    },
   { key: 'texture',   labelZh: '纹理',   labelEn: 'Texture'   },
 ]
+
+// ── feedback section state ────────────────────────────────────────────────────
+const feedbackType = ref<'bug' | 'suggestion' | 'content' | 'other'>('suggestion')
+const feedbackTitle = ref('')
+const feedbackDetail = ref('')
+const feedbackContact = ref('')
+const feedbackAllowFollowup = ref(true)
+const feedbackTouched = ref(false)
+const isSubmittingFeedback = ref(false)
+const feedbackSubmitted = ref(false)
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phoneRegex = /^1\d{10}$/
+
+const feedbackTitleValid = computed(() => {
+  const len = feedbackTitle.value.trim().length
+  return len >= 5 && len <= 50
+})
+
+const feedbackDetailValid = computed(() => {
+  const len = feedbackDetail.value.trim().length
+  return len >= 10 && len <= 500
+})
+
+const feedbackContactValid = computed(() => {
+  const v = feedbackContact.value.trim()
+  if (!v) return true
+  return emailRegex.test(v) || phoneRegex.test(v)
+})
+
+const canSubmitFeedback = computed(() =>
+  feedbackTitleValid.value && feedbackDetailValid.value && feedbackContactValid.value && !isSubmittingFeedback.value,
+)
+
+const feedbackDetailCount = computed(() => feedbackDetail.value.trim().length)
+
+function resetFeedbackForm(clearSuccess = true) {
+  feedbackType.value = 'suggestion'
+  feedbackTitle.value = ''
+  feedbackDetail.value = ''
+  feedbackContact.value = ''
+  feedbackAllowFollowup.value = true
+  feedbackTouched.value = false
+  isSubmittingFeedback.value = false
+  if (clearSuccess) feedbackSubmitted.value = false
+}
+
+function submitFeedback() {
+  feedbackTouched.value = true
+  feedbackSubmitted.value = false
+  if (!canSubmitFeedback.value) return
+  isSubmittingFeedback.value = true
+  window.setTimeout(() => {
+    resetFeedbackForm(false)
+    feedbackSubmitted.value = true
+  }, 700)
+}
+
+function saveExplorePreset() {
+  exploreProfileStore.savePreset({
+    contactName: presetNameInput.value.trim(),
+    phone: presetPhoneInput.value.trim(),
+    email: presetEmailInput.value.trim(),
+    emergencyContact: presetEmergencyInput.value.trim(),
+    transportMode: presetTransport.value,
+    adults: presetAdults.value,
+    children: presetChildren.value,
+  })
+  presetSaved.value = true
+  window.setTimeout(() => {
+    presetSaved.value = false
+  }, 1800)
+}
+
+function resetExplorePreset() {
+  exploreProfileStore.resetPreset()
+  presetNameInput.value = ''
+  presetPhoneInput.value = ''
+  presetEmailInput.value = ''
+  presetEmergencyInput.value = ''
+  presetTransport.value = 'metro'
+  presetAdults.value = 1
+  presetChildren.value = 0
+  presetSaved.value = false
+}
 </script>
 
 <template>
@@ -371,6 +468,49 @@ const toolOptions: { key: typeof defaultTool.value; labelZh: string; labelEn: st
         <!-- PREFERENCES                                      -->
         <!-- ──────────────────────────────────────────────── -->
         <template v-else-if="activeSection === 'preferences'">
+          <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+            <h3 class="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {{ label('探访预约预设', 'Explore Booking Preset') }}
+            </h3>
+            <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+              {{ label('保存常用信息，预约活动时自动回填。', 'Save frequent info and auto-fill your Explore bookings.') }}
+            </p>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <input v-model="presetNameInput" type="text" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" :placeholder="label('姓名', 'Name')" />
+              <input v-model="presetPhoneInput" type="tel" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" :placeholder="label('手机号', 'Phone')" />
+              <input v-model="presetEmailInput" type="email" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" :placeholder="label('邮箱（选填）', 'Email (optional)')" />
+              <input v-model="presetEmergencyInput" type="text" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" :placeholder="label('紧急联系人（选填）', 'Emergency contact (optional)')" />
+              <select v-model="presetTransport" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                <option value="metro">{{ label('地铁', 'Metro') }}</option>
+                <option value="bus">{{ label('公交', 'Bus') }}</option>
+                <option value="car">{{ label('自驾', 'Car') }}</option>
+                <option value="taxi">{{ label('打车', 'Taxi') }}</option>
+              </select>
+              <div class="flex gap-2">
+                <select v-model="presetAdults" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  <option v-for="n in 10" :key="`preset-adult-${n}`" :value="n - 1">
+                    {{ label(`成人 ${n - 1}`, `Adults ${n - 1}`) }}
+                  </option>
+                </select>
+                <select v-model="presetChildren" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  <option v-for="n in 10" :key="`preset-child-${n}`" :value="n - 1">
+                    {{ label(`儿童 ${n - 1}`, `Children ${n - 1}`) }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button type="button" class="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 dark:border-slate-600 dark:text-slate-300" @click="resetExplorePreset">
+                {{ label('重置预设', 'Reset Preset') }}
+              </button>
+              <button type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500" @click="saveExplorePreset">
+                {{ label('保存预设', 'Save Preset') }}
+              </button>
+              <span v-if="presetSaved" class="text-sm text-teal-600 dark:text-teal-400">
+                {{ label('已保存', 'Saved') }}
+              </span>
+            </div>
+          </section>
 
           <!-- Notifications -->
           <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900">
@@ -450,6 +590,136 @@ const toolOptions: { key: typeof defaultTool.value; labelZh: string; labelEn: st
                 >
                   {{ store.locale === 'zh' ? opt.labelZh : opt.labelEn }}
                 </button>
+              </div>
+            </div>
+          </section>
+        </template>
+
+        <!-- ──────────────────────────────────────────────── -->
+        <!-- FEEDBACK                                         -->
+        <!-- ──────────────────────────────────────────────── -->
+        <template v-else-if="activeSection === 'feedback'">
+          <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+            <h3 class="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {{ store.t.settingsFeedback }}
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ store.t.feedbackIntro }}</p>
+            <p class="mt-1 mb-5 text-xs text-slate-500 dark:text-slate-400">{{ store.t.feedbackBody }}</p>
+
+            <div class="space-y-4">
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {{ store.t.feedbackTypeLabel }}
+                </label>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="opt in ([
+                      { key: 'bug', label: store.t.feedbackTypeBug },
+                      { key: 'suggestion', label: store.t.feedbackTypeSuggestion },
+                      { key: 'content', label: store.t.feedbackTypeContent },
+                      { key: 'other', label: store.t.feedbackTypeOther },
+                    ] as const)"
+                    :key="opt.key"
+                    type="button"
+                    class="rounded-xl border px-3.5 py-1.5 text-sm transition"
+                    :class="feedbackType === opt.key
+                      ? 'border-teal-600 bg-teal-50 font-medium text-teal-800 dark:border-teal-500 dark:bg-teal-950/40 dark:text-teal-200'
+                      : 'border-slate-200 text-slate-600 hover:border-teal-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-teal-600'"
+                    @click="feedbackType = opt.key"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {{ store.t.feedbackTitleLabel }}
+                </label>
+                <input
+                  v-model="feedbackTitle"
+                  type="text"
+                  class="w-full rounded-xl border bg-slate-50 px-3 py-2 text-sm outline-none transition focus:ring-1 focus:ring-teal-500/20 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
+                  :class="feedbackTouched && !feedbackTitleValid ? 'border-rose-400 focus:border-rose-400 dark:border-rose-500' : 'border-slate-200 focus:border-teal-500 dark:border-slate-700'"
+                  :placeholder="store.t.feedbackTitlePlaceholder"
+                  @blur="feedbackTouched = true"
+                />
+                <p v-if="feedbackTouched && !feedbackTitleValid" class="mt-1 text-[11px] text-rose-500">
+                  {{ store.t.feedbackErrorTitleRequired }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {{ store.t.feedbackDetailLabel }}
+                </label>
+                <textarea
+                  v-model="feedbackDetail"
+                  rows="5"
+                  class="w-full rounded-xl border bg-slate-50 px-3 py-2 text-sm outline-none transition focus:ring-1 focus:ring-teal-500/20 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
+                  :class="feedbackTouched && !feedbackDetailValid ? 'border-rose-400 focus:border-rose-400 dark:border-rose-500' : 'border-slate-200 focus:border-teal-500 dark:border-slate-700'"
+                  :placeholder="store.t.feedbackDetailPlaceholder"
+                  @blur="feedbackTouched = true"
+                />
+                <div class="mt-1 flex items-center justify-between">
+                  <p v-if="feedbackTouched && !feedbackDetailValid" class="text-[11px] text-rose-500">
+                    {{ store.t.feedbackErrorDetailRequired }}
+                  </p>
+                  <span class="ml-auto text-[11px] text-slate-400 dark:text-slate-500">
+                    {{ feedbackDetailCount }}/500
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {{ store.t.feedbackContactLabel }}
+                </label>
+                <input
+                  v-model="feedbackContact"
+                  type="text"
+                  class="w-full rounded-xl border bg-slate-50 px-3 py-2 text-sm outline-none transition focus:ring-1 focus:ring-teal-500/20 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
+                  :class="feedbackTouched && !feedbackContactValid ? 'border-rose-400 focus:border-rose-400 dark:border-rose-500' : 'border-slate-200 focus:border-teal-500 dark:border-slate-700'"
+                  :placeholder="store.t.feedbackContactPlaceholder"
+                  @blur="feedbackTouched = true"
+                />
+                <p v-if="feedbackTouched && !feedbackContactValid" class="mt-1 text-[11px] text-rose-500">
+                  {{ store.t.feedbackErrorContactInvalid }}
+                </p>
+              </div>
+
+              <label class="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                <input
+                  v-model="feedbackAllowFollowup"
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span class="text-sm text-slate-700 dark:text-slate-300">{{ store.t.feedbackAllowFollowup }}</span>
+              </label>
+
+              <div class="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  class="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 dark:border-slate-600 dark:text-slate-300"
+                  @click="resetFeedbackForm"
+                >
+                  {{ store.t.feedbackReset }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-800 disabled:opacity-40 dark:bg-teal-600 dark:hover:bg-teal-500"
+                  :disabled="!canSubmitFeedback"
+                  @click="submitFeedback"
+                >
+                  {{ isSubmittingFeedback ? store.t.feedbackSubmitting : store.t.feedbackSubmit }}
+                </button>
+              </div>
+
+              <div
+                v-if="feedbackSubmitted"
+                class="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-700 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-300"
+              >
+                {{ store.t.feedbackSuccess }}
               </div>
             </div>
           </section>

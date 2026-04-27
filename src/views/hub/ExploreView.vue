@@ -5,11 +5,15 @@ import { createMarkerElement, ensureMarkerAnimations } from '../../map/markerFac
 import { useMapStore } from '../../stores/map'
 import { useAppStore } from '../../stores/app'
 import { usePointsStore, TASK_IDS } from '../../stores/points'
+import { useExploreProfileStore, type TransportMode } from '../../stores/exploreProfile'
 import { activities, venues, type Activity, type Venue } from '../../data/explore'
+import { resolvePublicUrl } from '../../utils/publicUrl'
 
 const store = useAppStore()
 const mapStore = useMapStore()
 const pointsStore = usePointsStore()
+const exploreProfileStore = useExploreProfileStore()
+exploreProfileStore.hydrateFromStorage()
 const t = computed(() => store.t)
 
 // ─── CSS filter for theme-adaptive map ───────────────────────────────────────
@@ -183,6 +187,7 @@ watch(
   },
 )
 
+
 watch(
   () => mapStore.pinnedVenueId,
   () => {
@@ -296,23 +301,275 @@ const filteredEventCount = computed(() => mapStore.visibleActivities.length)
 // ─── Activity detail (opened from map / venue / card only, not from calendar as controller) ─
 const selectedActivity = ref<Activity | null>(null)
 const showBookModal = ref(false)
-const bookName = ref('')
-const bookPhone = ref('')
-const bookCount = ref(1)
+type BookingVoucher = { code: string; status: 'pending' | 'confirmed'; createdAt: string }
+type BookingRecord = {
+  activityId: string
+  name: string
+  phone: string
+  email: string
+  emergencyContact: string
+  adults: number
+  children: number
+  transportMode: TransportMode
+  notes: string
+  voucher: BookingVoucher
+}
+const BOOKING_STORAGE_KEY = 'explore_bookings_v1'
+const bookName = ref(exploreProfileStore.preset.contactName)
+const bookPhone = ref(exploreProfileStore.preset.phone)
+const bookEmail = ref(exploreProfileStore.preset.email)
+const bookEmergencyContact = ref(exploreProfileStore.preset.emergencyContact)
+const bookAdults = ref(exploreProfileStore.preset.adults)
+const bookChildren = ref(exploreProfileStore.preset.children)
+const bookTransportMode = ref<TransportMode>(exploreProfileStore.preset.transportMode)
+const bookNotes = ref('')
+const bookHealthConfirmed = ref(false)
+const bookLiabilityConfirmed = ref(false)
 const bookDone = ref(false)
+const bookMode = ref<'created' | 'view'>('created')
+const bookError = ref('')
+const bookVoucher = ref<BookingVoucher | null>(null)
+const bookedRecords = ref<Record<string, BookingRecord>>({})
 const checkedIn = ref<Set<string>>(new Set())
 const checkinDone = ref<string | null>(null)
+const lastCheckinDistanceM = ref<number | null>(null)
+const checkinError = ref<string | null>(null)
+const checkinActivityId = ref<string | null>(null)
+const phoneRegex = /^1\d{10}$/
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const selectFieldClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+
+const bookingTotalCount = computed(() => bookAdults.value + bookChildren.value)
+const currentBookingRecord = computed<BookingRecord | null>(() => {
+  const id = selectedActivity.value?.id
+  if (!id) return null
+  return bookedRecords.value[id] ?? null
+})
+const qrSize = 29
+const fakeQrMatrix = computed<number[][]>(() => {
+  const seed = (bookVoucher.value?.code ?? 'EXP-DEMO').split('')
+  const nums = seed.map((ch) => ch.charCodeAt(0))
+  const size = qrSize
+  const quietZone = 2
+  const matrix: number[][] = []
+  const inFinder = (x: number, y: number, ox: number, oy: number) =>
+    x >= ox && x < ox + 7 && y >= oy && y < oy + 7
+  const finderFill = (x: number, y: number, ox: number, oy: number): number => {
+    const dx = x - ox
+    const dy = y - oy
+    const outer = dx === 0 || dx === 6 || dy === 0 || dy === 6
+    const inner = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4
+    return outer || inner ? 1 : 0
+  }
+  for (let y = 0; y < size; y++) {
+    const row: number[] = []
+    for (let x = 0; x < size; x++) {
+      if (
+        x < quietZone ||
+        y < quietZone ||
+        x >= size - quietZone ||
+        y >= size - quietZone
+      ) {
+        row.push(0)
+        continue
+      }
+      if (inFinder(x, y, quietZone, quietZone)) {
+        row.push(finderFill(x, y, quietZone, quietZone))
+        continue
+      }
+      if (inFinder(x, y, size - quietZone - 7, quietZone)) {
+        row.push(finderFill(x, y, size - quietZone - 7, quietZone))
+        continue
+      }
+      if (inFinder(x, y, quietZone, size - quietZone - 7)) {
+        row.push(finderFill(x, y, quietZone, size - quietZone - 7))
+        continue
+      }
+      const v = nums[(x * 3 + y * 5) % nums.length] + x * 11 + y * 7
+      row.push(v % 2 === 0 ? 1 : 0)
+    }
+    matrix.push(row)
+  }
+  return matrix
+})
+const flatQrCells = computed(() => fakeQrMatrix.value.flat())
+const qrGridStyle = computed(() => ({
+  display: 'grid',
+  gridTemplateColumns: `repeat(${qrSize}, minmax(0, 1fr))`,
+}))
+
+function hydrateBookedRecords() {
+  if (typeof window === 'undefined') return
+  const raw = window.localStorage.getItem(BOOKING_STORAGE_KEY)
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw) as Record<string, BookingRecord>
+    bookedRecords.value = parsed
+  } catch {
+    bookedRecords.value = {}
+  }
+}
+
+function persistBookedRecords() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(BOOKING_STORAGE_KEY, JSON.stringify(bookedRecords.value))
+}
+
+hydrateBookedRecords()
 
 function openActivity(a: Activity) { selectedActivity.value = a }
 function closeActivityDetail() { selectedActivity.value = null }
+
+function applyPresetToBooking() {
+  bookName.value = exploreProfileStore.preset.contactName
+  bookPhone.value = exploreProfileStore.preset.phone
+  bookEmail.value = exploreProfileStore.preset.email
+  bookEmergencyContact.value = exploreProfileStore.preset.emergencyContact
+  bookTransportMode.value = exploreProfileStore.preset.transportMode
+  bookAdults.value = exploreProfileStore.preset.adults
+  bookChildren.value = exploreProfileStore.preset.children
+}
+
 function openBook() {
-  bookName.value = ''; bookPhone.value = ''; bookCount.value = 1; bookDone.value = false
+  applyPresetToBooking()
+  bookNotes.value = ''
+  bookHealthConfirmed.value = false
+  bookLiabilityConfirmed.value = false
+  bookError.value = ''
+  bookVoucher.value = null
+  bookDone.value = false
+  bookMode.value = 'created'
   showBookModal.value = true
 }
+
+function openBookedInfo() {
+  const activity = selectedActivity.value
+  if (!activity) return
+  const record = bookedRecords.value[activity.id]
+  if (!record) return
+  bookName.value = record.name
+  bookPhone.value = record.phone
+  bookEmail.value = record.email
+  bookEmergencyContact.value = record.emergencyContact
+  bookAdults.value = record.adults
+  bookChildren.value = record.children
+  bookTransportMode.value = record.transportMode
+  bookNotes.value = record.notes
+  bookHealthConfirmed.value = true
+  bookLiabilityConfirmed.value = true
+  bookVoucher.value = record.voucher
+  bookError.value = ''
+  bookDone.value = true
+  bookMode.value = 'view'
+  showBookModal.value = true
+}
+
 function closeBook() { showBookModal.value = false }
-function submitBook() { bookDone.value = true }
-function doCheckin(activity: Activity) {
+function submitBook() {
+  if (!selectedActivity.value) return
+  const name = bookName.value.trim()
+  const phone = bookPhone.value.trim()
+  const email = bookEmail.value.trim()
+  const emergency = bookEmergencyContact.value.trim()
+  if (!name) {
+    bookError.value = t.value.exploreBookErrorName
+    return
+  }
+  if (!phoneRegex.test(phone)) {
+    bookError.value = t.value.exploreBookErrorPhone
+    return
+  }
+  if (email && !emailRegex.test(email)) {
+    bookError.value = t.value.exploreBookErrorEmail
+    return
+  }
+  if (bookingTotalCount.value <= 0) {
+    bookError.value = t.value.exploreBookErrorCount
+    return
+  }
+  if (!bookHealthConfirmed.value || !bookLiabilityConfirmed.value) {
+    bookError.value = t.value.exploreBookErrorConfirm
+    return
+  }
+  if (
+    selectedActivity.value.remaining !== null &&
+    bookingTotalCount.value > selectedActivity.value.remaining
+  ) {
+    bookError.value = t.value.exploreBookErrorCapacity
+    return
+  }
+  bookError.value = ''
+  exploreProfileStore.savePreset({
+    contactName: name,
+    phone,
+    email,
+    emergencyContact: emergency,
+    transportMode: bookTransportMode.value,
+    adults: bookAdults.value,
+    children: bookChildren.value,
+  })
+  const codeSeed = Math.random().toString(36).slice(2, 8).toUpperCase()
+  bookVoucher.value = {
+    code: `EXP-${selectedActivity.value.id.toUpperCase()}-${codeSeed}`,
+    status: selectedActivity.value.remaining !== null && selectedActivity.value.remaining <= 8 ? 'pending' : 'confirmed',
+    createdAt: new Date().toLocaleString(),
+  }
+  bookedRecords.value[selectedActivity.value.id] = {
+    activityId: selectedActivity.value.id,
+    name,
+    phone,
+    email,
+    emergencyContact: emergency,
+    adults: bookAdults.value,
+    children: bookChildren.value,
+    transportMode: bookTransportMode.value,
+    notes: bookNotes.value.trim(),
+    voucher: bookVoucher.value,
+  }
+  persistBookedRecords()
+  bookDone.value = true
+  bookMode.value = 'created'
+}
+
+function getCurrentPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('geolocation not supported'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 60000,
+    })
+  })
+}
+
+async function doCheckin(activity: Activity) {
   if (checkedIn.value.has(activity.id)) return
+  const venue = venues.find((v) => v.id === activity.venueId)
+  if (!venue) return
+  let distance = Number.POSITIVE_INFINITY
+  try {
+    const pos = await getCurrentPosition()
+    distance = haversineMetres(pos.coords.latitude, pos.coords.longitude, venue.lat, venue.lng)
+  } catch {
+    checkinActivityId.value = activity.id
+    checkinError.value = store.locale === 'zh' ? '定位失败，请检查定位权限后重试' : 'Location failed. Please enable permissions and try again.'
+    checkinDone.value = null
+    return
+  }
+  lastCheckinDistanceM.value = Math.round(distance)
+  checkinActivityId.value = activity.id
+  if (distance > GEOFENCE_RADIUS) {
+    checkinError.value = t.value.exploreCheckinOutOfRange
+      .replace('{distance}', String(Math.round(distance)))
+      .replace('{radius}', String(GEOFENCE_RADIUS))
+    checkinDone.value = null
+    return
+  }
+  checkinError.value = null
   checkedIn.value.add(activity.id)
   checkinDone.value = activity.id
   pointsStore.completeTask(TASK_IDS.EVENT_CHECKIN)
@@ -334,6 +591,40 @@ function actTitle(a: Activity) { return store.locale === 'zh' ? a.titleZh : a.ti
 function actTime(a: Activity) { return store.locale === 'zh' ? a.timeZh : a.timeEn }
 function actDesc(a: Activity) { return store.locale === 'zh' ? a.descZh : a.descEn }
 function actTags(a: Activity) { return store.locale === 'zh' ? a.tagsZh : a.tagsEn }
+function venueImage(v: Venue) { return resolvePublicUrl(v.image) }
+function activityImage(a: Activity) { return resolvePublicUrl(a.image) }
+
+const parkingCapacityBase: Record<string, { total: number; baseBusy: number }> = {
+  v001: { total: 120, baseBusy: 0.72 },
+  v002: { total: 80, baseBusy: 0.68 },
+  v003: { total: 90, baseBusy: 0.74 },
+  v004: { total: 110, baseBusy: 0.78 },
+}
+
+const carParkingAdvice = computed(() => {
+  if (bookTransportMode.value !== 'car' || !selectedActivity.value) return null
+  const venue = venues.find((v) => v.id === selectedActivity.value!.venueId)
+  if (!venue) return null
+  const base = parkingCapacityBase[venue.id] ?? { total: 90, baseBusy: 0.72 }
+  const load =
+    selectedActivity.value.quota && selectedActivity.value.remaining !== null
+      ? (selectedActivity.value.quota - selectedActivity.value.remaining) / selectedActivity.value.quota
+      : 0.6
+  const busyRatio = Math.min(0.97, base.baseBusy + load * 0.28)
+  const available = Math.max(0, Math.round(base.total * (1 - busyRatio)))
+  const highPressure = busyRatio >= 0.85 || available <= 12
+  return {
+    available,
+    highPressure,
+    message: store.locale === 'zh'
+      ? highPressure
+        ? `馆内停车位预计仅剩 ${available} 个，周边停车压力较高，建议优先选择公共交通。`
+        : `馆内停车位预计剩余 ${available} 个，当前停车压力可控。`
+      : highPressure
+        ? `Only about ${available} on-site parking spots left; nearby parking pressure is high. Public transit is recommended.`
+        : `About ${available} on-site parking spots are available; current parking pressure is manageable.`,
+  }
+})
 
 // ─── Route planning & geofence ───────────────────────────────────────────────
 type RouteState = 'idle' | 'locating' | 'drawing' | 'done' | 'error' | 'geofence_ok'
@@ -404,10 +695,9 @@ function navigateTo(venue: Venue): void {
     },
     (err) => {
       routeState.value = 'done'
-      const simDist = haversineMetres(39.9, 116.4, venue.lat, venue.lng)
       routeMsg.value = store.locale === 'zh'
-        ? `定位失败 (${err.code})，模拟距离约 ${Math.round(simDist / 1000)} 公里`
-        : `Location denied (${err.code}) — simulated ~${Math.round(simDist / 1000)} km`
+        ? `定位失败 (${err.code})，请检查定位权限后重试`
+        : `Location denied (${err.code}). Please enable permissions and retry.`
     },
     { timeout: 8000, maximumAge: 60000 },
   )
@@ -460,8 +750,23 @@ onBeforeUnmount(() => {
         </button>
 
         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft dark:border-slate-700 dark:bg-slate-900">
-          <div class="flex aspect-[3/1] items-center justify-center bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-950/50 dark:to-teal-900/30">
-            <svg class="h-14 w-14 text-teal-300 dark:text-teal-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+          <div class="relative flex aspect-[3/1] items-center justify-center overflow-hidden bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-950/50 dark:to-teal-900/30">
+            <img
+              v-if="activityImage(selectedActivity)"
+              :src="activityImage(selectedActivity)"
+              :alt="actTitle(selectedActivity)"
+              class="h-full w-full object-cover"
+              loading="lazy"
+              draggable="false"
+            />
+            <svg
+              v-else
+              class="h-14 w-14 text-teal-300 dark:text-teal-800"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
             </svg>
           </div>
@@ -523,6 +828,14 @@ onBeforeUnmount(() => {
                 {{ t.exploreBookBtn }}
               </button>
               <button
+                v-if="currentBookingRecord"
+                type="button"
+                class="rounded-xl border border-teal-300 bg-teal-50 px-5 py-2.5 text-sm font-medium text-teal-800 transition hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300"
+                @click="openBookedInfo"
+              >
+                {{ store.locale === 'zh' ? '查看预约信息与凭证' : 'View booking & pass' }}
+              </button>
+              <button
                 type="button"
                 class="rounded-xl border px-5 py-2.5 text-sm font-medium transition"
                 :class="checkedIn.has(selectedActivity.id)
@@ -535,6 +848,18 @@ onBeforeUnmount(() => {
                 <span v-else>{{ t.exploreCheckinBtn }}</span>
               </button>
             </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>{{ store.locale === 'zh' ? '系统将根据当前位置自动判定签到范围。' : 'Check-in range is validated by your current location.' }}</span>
+              <span v-if="lastCheckinDistanceM !== null && checkinActivityId === selectedActivity.id">
+                {{ t.exploreCheckinDistanceHint.replace('{distance}', String(lastCheckinDistanceM)) }}
+              </span>
+            </div>
+            <p
+              v-if="checkinError && checkinActivityId === selectedActivity.id"
+              class="text-xs text-rose-600 dark:text-rose-400"
+            >
+              {{ checkinError }}
+            </p>
             <p class="text-xs text-slate-400 dark:text-slate-500">{{ t.exploreBookSuccessHint }}</p>
           </div>
         </div>
@@ -645,7 +970,15 @@ onBeforeUnmount(() => {
               v-if="mapStore.activeVenue"
               class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft dark:border-slate-700 dark:bg-slate-900"
             >
-              <div class="relative flex items-center justify-center bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-950/50 dark:to-teal-900/30 px-6 py-5">
+              <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-teal-50 to-teal-100 px-6 py-5 dark:from-teal-950/50 dark:to-teal-900/30">
+                <img
+                  v-if="venueImage(mapStore.activeVenue)"
+                  :src="venueImage(mapStore.activeVenue)"
+                  :alt="venueName(mapStore.activeVenue)"
+                  class="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                  draggable="false"
+                />
                 <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', categoryBadge(mapStore.activeVenue)]">
                   {{ venueType(mapStore.activeVenue) }}
                 </span>
@@ -966,8 +1299,57 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="bookDone" class="flex flex-col items-center gap-3 px-5 py-8 text-center">
               <div class="flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 text-3xl dark:bg-teal-950/50">✓</div>
-              <h4 class="font-display text-lg font-semibold text-teal-800 dark:text-teal-300">{{ t.exploreBookSuccess }}</h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400">{{ t.exploreBookSuccessHint }}</p>
+              <h4 class="font-display text-lg font-semibold text-teal-800 dark:text-teal-300">
+                {{ bookMode === 'created' ? t.exploreBookSuccess : (store.locale === 'zh' ? '预约信息与凭证' : 'Booking info & pass') }}
+              </h4>
+              <p class="text-sm text-slate-500 dark:text-slate-400">
+                {{ bookMode === 'created' ? t.exploreBookSuccessHint : (store.locale === 'zh' ? '可用于现场核验与信息确认。' : 'Use this pass for on-site verification.') }}
+              </p>
+              <div class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <p>{{ t.exploreBookNameLabel }}：{{ bookName }}</p>
+                <p>{{ t.exploreBookPhoneLabel }}：{{ bookPhone }}</p>
+                <p v-if="bookEmail">{{ store.locale === 'zh' ? '邮箱' : 'Email' }}：{{ bookEmail }}</p>
+                <p>{{ t.exploreBookCountLabel }}：{{ bookingTotalCount }}（{{ t.exploreBookAdultsLabel }} {{ bookAdults }} / {{ t.exploreBookChildrenLabel }} {{ bookChildren }}）</p>
+                <p>{{ t.exploreBookTransportLabel }}：{{ bookTransportMode === 'metro' ? t.exploreBookTransportMetro : bookTransportMode === 'bus' ? t.exploreBookTransportBus : bookTransportMode === 'car' ? t.exploreBookTransportCar : t.exploreBookTransportTaxi }}</p>
+                <p v-if="bookNotes">{{ t.exploreBookNotesLabel }}：{{ bookNotes }}</p>
+              </div>
+              <div v-if="bookVoucher" class="w-full rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-left text-xs text-teal-800 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-200">
+                <p>{{ `${t.exploreBookVoucherCode}：${bookVoucher.code}` }}</p>
+                <p>
+                  {{
+                    `${t.exploreBookVoucherStatus}：${
+                      bookVoucher.status === 'confirmed'
+                        ? t.exploreBookVoucherStatusConfirmed
+                        : t.exploreBookVoucherStatusPending
+                    }`
+                  }}
+                </p>
+                <p>{{ `${t.exploreBookVoucherCreatedAt}：${bookVoucher.createdAt}` }}</p>
+              </div>
+              <div
+                v-if="bookVoucher"
+                class="w-full rounded-xl border border-slate-200 bg-white p-3 text-left dark:border-slate-700 dark:bg-slate-900"
+              >
+                <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  {{ store.locale === 'zh' ? '入场凭证二维码' : 'Entry pass QR code' }}
+                </p>
+                <div class="mt-2 flex items-start gap-3">
+                  <div class="rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-950">
+                    <div :style="qrGridStyle" class="w-[174px] overflow-hidden rounded">
+                      <span
+                        v-for="(cell, idx) in flatQrCells"
+                        :key="`qr-${idx}`"
+                        class="h-[6px] w-[6px]"
+                        :class="cell ? 'bg-slate-900 dark:bg-slate-100' : 'bg-white dark:bg-slate-950'"
+                      />
+                    </div>
+                  </div>
+                  <div class="min-w-0 text-[11px] text-slate-500 dark:text-slate-400">
+                    <p>{{ store.locale === 'zh' ? '凭证号' : 'Pass code' }}: {{ bookVoucher.code }}</p>
+                    <p class="mt-1">{{ store.locale === 'zh' ? '用于现场核验' : 'For on-site verification' }}</p>
+                  </div>
+                </div>
+              </div>
               <p class="text-xs text-teal-600 dark:text-teal-400">+{{ selectedActivity?.pointsReward }} {{ store.locale === 'zh' ? '积分（签到后领取）' : 'pts (claim after check-in)' }}</p>
               <button type="button" class="mt-2 w-full rounded-xl bg-teal-800 py-2.5 text-sm font-medium text-white transition hover:bg-teal-900 dark:bg-teal-600" @click="closeBook">
                 {{ store.locale === 'zh' ? '完成' : 'Done' }}
@@ -983,11 +1365,82 @@ onBeforeUnmount(() => {
                 <input v-model="bookPhone" type="tel" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">{{ t.exploreBookCountLabel }}</label>
-                <select v-model="bookCount" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                  <option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
+                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {{ t.exploreBookEmailLabel }}
+                </label>
+                <input v-model="bookEmail" type="email" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {{ t.exploreBookEmergencyLabel }}
+                </label>
+                <input v-model="bookEmergencyContact" type="text" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    {{ t.exploreBookAdultsLabel }}
+                  </label>
+                  <select v-model="bookAdults" :class="selectFieldClass">
+                    <option v-for="n in 10" :key="`book-adult-${n}`" :value="n - 1">{{ n - 1 }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    {{ t.exploreBookChildrenLabel }}
+                  </label>
+                  <select v-model="bookChildren" :class="selectFieldClass">
+                    <option v-for="n in 10" :key="`book-child-${n}`" :value="n - 1">{{ n - 1 }}</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {{ t.exploreBookCountLabel }}: {{ bookingTotalCount }}
+                </label>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {{ t.exploreBookTransportLabel }}
+                </label>
+                <select v-model="bookTransportMode" :class="selectFieldClass">
+                  <option value="metro">{{ t.exploreBookTransportMetro }}</option>
+                  <option value="bus">{{ t.exploreBookTransportBus }}</option>
+                  <option value="car">{{ t.exploreBookTransportCar }}</option>
+                  <option value="taxi">{{ t.exploreBookTransportTaxi }}</option>
                 </select>
               </div>
+              <div
+                v-if="carParkingAdvice"
+                class="rounded-xl border px-3 py-2 text-left text-xs"
+                :class="carParkingAdvice.highPressure
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-200'"
+              >
+                {{ carParkingAdvice.message }}
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {{ t.exploreBookNotesLabel }}
+                </label>
+                <textarea v-model="bookNotes" rows="2" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+              </div>
+              <div class="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                <label class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input v-model="bookHealthConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800" />
+                  <span>{{ t.exploreBookHealthConfirm }}</span>
+                </label>
+                <label class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input v-model="bookLiabilityConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800" />
+                  <span>{{ t.exploreBookLiabilityConfirm }}</span>
+                </label>
+              </div>
+              <div class="flex justify-between">
+                <button type="button" class="text-xs text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" @click="applyPresetToBooking">
+                  {{ t.exploreBookUsePreset }}
+                </button>
+              </div>
+              <p v-if="bookError" class="text-xs text-rose-600 dark:text-rose-400">{{ bookError }}</p>
               <div class="flex gap-3 pt-1">
                 <button type="button" class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300" @click="closeBook">
                   {{ store.locale === 'zh' ? '取消' : 'Cancel' }}

@@ -20,6 +20,8 @@ export interface MapInitOptions {
   center?: LatLng
   /** e.g. 'amap://styles/whitesmoke' or 'dark' shorthand resolved by adapter */
   style?: string
+  /** AMap basemap / control language; requires multi-language permission on the Web key */
+  mapLanguage?: 'zh' | 'en'
 }
 
 /** Event names supported by all adapters */
