@@ -175,4 +175,3 @@ Use these constraints together with each slot prompt:
 If you want stronger cross-page consistency, append this phrase to each slot prompt:
 
 `consistent visual language across a cultural heritage app asset pack, coherent tone, realistic museum-and-design editorial style`
-
