@@ -22,9 +22,11 @@ type MuseumDetailPayload = {
   title: string
   subtitle: string
   desc: string
+  lead?: string
   tag?: string
-  materials: string[]
   contentBlocks: string[]
+  keywords?: string[]
+  timeline?: string[]
 }
 
 type VideoModalPayload = {
@@ -34,86 +36,6 @@ type VideoModalPayload = {
   poster?: string
   preview?: string
   detail?: MuseumDetailPayload
-}
-
-function buildKnowledgeContent(title: string, summary: string, isZh: boolean): string[] {
-  if (isZh) {
-    return [
-      `${title}并非单一物件说明，而是工艺、历史与文化语境的交叉入口。`,
-      `核心摘要：${summary}`,
-      '在馆藏讲解中，建议先给出一段 100-150 字的背景导读，再进入工艺细节，减少用户认知负担。',
-      '知识条目正文建议按「概念来源 -> 工艺流程 -> 典型案例 -> 当代转译」四段组织，方便阅读与检索。',
-      '若涉及工艺术语，请在首次出现处给出简短注释，并在文末附可折叠术语表，提升非专业用户可读性。',
-      '长文排版建议每段控制在 3-5 句，段间留白大于正文行高，关键句采用浅色强调而非高饱和色块。',
-      '对比信息建议使用并排卡片或时间轴，不建议在同段堆叠过多年份与名词，避免阅读压力累积。',
-      '发布前请补充来源说明、版权状态与学术校核人信息，确保教育场景可追溯与可引用。',
-    ]
-  }
-  return [
-    `${title} is best treated as an entry point crossing craft, history, and cultural context.`,
-    `Key summary: ${summary}`,
-    'For guided reading, start with a 100-150 word overview before technical details to reduce cognitive load.',
-    'Structure long-form content as: context, process, representative case, and contemporary interpretation.',
-    'Add short glossary notes at first mention of technical terms, then provide a foldable glossary at the end.',
-    'Keep each paragraph concise, maintain generous spacing, and highlight key lines with low-contrast accents.',
-    'Use side-by-side cards or timelines for comparisons instead of stacking dense dates in one paragraph.',
-    'Before publishing, include source traceability, copyright status, and reviewer metadata for reuse.',
-  ]
-}
-
-function getMaterialRequirements(section: MuseumDetailSection, isZh: boolean): string[] {
-  const baseZh = [
-    '标题与副标题：中英文各 1 版，标题 <= 28 字，副标题 <= 60 字。',
-    '导语与正文：导语 100-150 字，正文建议 800-2000 字，分 4-8 段。',
-    '元数据：年代、地域、工艺流派、关键词（3-8 个）、来源/版权状态。',
-    '结构化信息：时间线节点（>=3 个）+ 对比点（>=2 组）+ 延伸阅读（>=3 条）。',
-  ]
-  const baseEn = [
-    'Title/subtitle in both languages. Title <= 28 chars, subtitle <= 60 chars.',
-    'Lead paragraph (100-150 words) and body copy (800-2000 words, 4-8 sections).',
-    'Metadata: era, region, craft school, keywords (3-8), source and rights status.',
-    'Structured content: >=3 timeline nodes, >=2 comparison groups, >=3 references.',
-  ]
-  const sectionExtrasZh: Record<MuseumDetailSection, string[]> = {
-    exhibition: [
-      '策展说明：策展目标、观展路径、受众层级、无障碍说明。',
-      '展项占位图层：主视觉占位比例 16:9，说明图占位比例 4:3（可先用线框）。',
-    ],
-    collection: [
-      '藏品卡字段：材质、尺寸、工艺步骤、保存状态、修复记录摘要。',
-      '学术引用：至少 1 条馆内记录 + 1 条外部文献编号。',
-    ],
-    knowledge: [
-      '知识条目结构：术语定义、技术机制、争议点、学习路径建议。',
-      '阅读辅助：段落锚点、小结标题、关键句标注（每屏建议 <=2 处）。',
-    ],
-    video: [
-      '脚本框架：主题目标、分镜段落、旁白文本、知识点回顾。',
-      '交互说明：播放入口文案、时长标签、关联条目跳转规则。',
-    ],
-  }
-  const sectionExtrasEn: Record<MuseumDetailSection, string[]> = {
-    exhibition: [
-      'Curatorial outline: goals, route design, audience layers, accessibility notes.',
-      'Placeholder visual layers: hero 16:9 and support figures 4:3 before final assets.',
-    ],
-    collection: [
-      'Collection schema: material, dimensions, process steps, conservation status, repair notes.',
-      'Scholarly references: at least one internal record and one external citation.',
-    ],
-    knowledge: [
-      'Entry schema: definition, mechanism, debates, suggested learning path.',
-      'Reading aids: anchors, section summaries, and limited key-line highlights.',
-    ],
-    video: [
-      'Script package: topic goal, sequence outline, narration text, recap points.',
-      'Interaction copy: play-entry labels, duration tags, and related-entry jumps.',
-    ],
-  }
-
-  return isZh
-    ? [...baseZh, ...sectionExtrasZh[section]]
-    : [...baseEn, ...sectionExtrasEn[section]]
 }
 
 const detailOpen = ref(false)
@@ -143,30 +65,23 @@ function createDetailPayload(
   subtitle: string,
   desc: string,
   tag?: string,
+  extras?: {
+    lead?: string
+    contentBlocks?: string[]
+    keywords?: string[]
+    timeline?: string[]
+  },
 ): MuseumDetailPayload {
-  const isZh = store.locale === 'zh'
   return {
     section,
     title,
     subtitle,
     desc,
+    lead: extras?.lead,
     tag,
-    materials: getMaterialRequirements(section, isZh),
-    contentBlocks:
-      section === 'knowledge'
-        ? buildKnowledgeContent(title, desc, isZh)
-        : [
-            desc,
-            isZh
-              ? '该内容位于演示框架中：当前优先验证信息结构、阅读路径与交互密度，后续再替换为正式图文素材。'
-              : 'This item runs in framework mode first, validating structure and readability before final assets.',
-            isZh
-              ? '建议先补齐术语注释与来源链接，再逐步加入高分辨率视觉资产，避免一次性堆叠信息。'
-              : 'Add glossary notes and source links first, then incrementally layer high-resolution visual assets.',
-            isZh
-              ? '若用于课堂或导览，请补充 2-3 个讨论问题，形成“看展 -> 提问 -> 回看”闭环。'
-              : 'For class/tour usage, include 2-3 discussion prompts to complete a read-question-review loop.',
-          ],
+    contentBlocks: extras?.contentBlocks ?? [desc],
+    keywords: extras?.keywords,
+    timeline: extras?.timeline,
   }
 }
 
@@ -197,6 +112,13 @@ const pastWorks = computed(() =>
       store.locale === 'zh' ? item.titleZh : item.titleEn,
       store.locale === 'zh' ? item.yearZh : item.yearEn,
       store.locale === 'zh' ? item.descZh : item.descEn,
+      undefined,
+      {
+        lead: store.locale === 'zh' ? item.leadZh : item.leadEn,
+        contentBlocks: store.locale === 'zh' ? item.contentBlocksZh : item.contentBlocksEn,
+        keywords: store.locale === 'zh' ? item.keywordsZh : item.keywordsEn,
+        timeline: store.locale === 'zh' ? item.timelineZh : item.timelineEn,
+      },
     ),
   })),
 )
@@ -210,6 +132,13 @@ const knowledge = computed(() =>
       store.locale === 'zh' ? item.titleZh : item.titleEn,
       store.t.museumKnowledgeSubtitle,
       store.locale === 'zh' ? item.summaryZh : item.summaryEn,
+      undefined,
+      {
+        lead: store.locale === 'zh' ? item.leadZh : item.leadEn,
+        contentBlocks: store.locale === 'zh' ? item.contentBlocksZh : item.contentBlocksEn,
+        keywords: store.locale === 'zh' ? item.keywordsZh : item.keywordsEn,
+        timeline: store.locale === 'zh' ? item.timelineZh : item.timelineEn,
+      },
     ),
   })),
 )
@@ -716,6 +645,13 @@ const cardGridClass =
               {{ activeDetail.desc }}
             </p>
 
+            <div
+              v-if="activeDetail.lead"
+              class="mt-6 rounded-2xl border border-teal-100 bg-teal-50/70 px-5 py-4 text-[15px] leading-[1.85] text-slate-700 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-slate-200"
+            >
+              {{ activeDetail.lead }}
+            </div>
+
             <div class="mt-10 space-y-6">
               <p
                 v-for="(block, idx) in activeDetail.contentBlocks"
@@ -726,20 +662,43 @@ const cardGridClass =
               </p>
             </div>
 
-            <div class="mt-12 border-t border-slate-200/80 pt-10 dark:border-slate-800">
+            <div
+              v-if="activeDetail.keywords?.length"
+              class="mt-12 border-t border-slate-200/80 pt-10 dark:border-slate-800"
+            >
               <h4 class="font-display text-base font-semibold text-slate-900 dark:text-white">
-                {{ store.locale === 'zh' ? '素材要求（非图片/视频优先）' : 'Material checklist (non-media first)' }}
+                {{ store.locale === 'zh' ? '关键词' : 'Keywords' }}
               </h4>
-              <ul class="mt-5 list-none space-y-3 pb-10">
-                <li
-                  v-for="(m, idx) in activeDetail.materials"
+              <div class="mt-5 flex flex-wrap gap-2">
+                <span
+                  v-for="(keyword, idx) in activeDetail.keywords"
                   :key="idx"
-                  class="border-l-2 border-teal-400/70 pl-4 text-[15px] leading-relaxed text-slate-600 dark:border-teal-600/60 dark:text-slate-400"
+                  class="rounded-full border border-teal-200/80 bg-teal-50 px-3 py-1 text-sm text-teal-900 dark:border-teal-800/80 dark:bg-teal-950/40 dark:text-teal-200"
                 >
-                  {{ m }}
+                  {{ keyword }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-if="activeDetail.timeline?.length"
+              class="mt-12 border-t border-slate-200/80 pt-10 dark:border-slate-800"
+            >
+              <h4 class="font-display text-base font-semibold text-slate-900 dark:text-white">
+                {{ store.locale === 'zh' ? '时间线 / 发展节点' : 'Timeline / key stages' }}
+              </h4>
+              <ul class="mt-5 list-none space-y-4">
+                <li
+                  v-for="(node, idx) in activeDetail.timeline"
+                  :key="idx"
+                  class="border-l-2 border-slate-300/90 pl-4 text-[15px] leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-400"
+                >
+                  {{ node }}
                 </li>
               </ul>
             </div>
+
+            <div class="pb-10" />
           </div>
 
           <!-- 单轨：仅视觉轨道 + 书签，正文使用隐藏原生滚动条 -->
@@ -812,15 +771,17 @@ const cardGridClass =
           </button>
         </div>
         <div class="bg-black px-4 pb-5 pt-4 sm:px-6">
-          <video
-            v-if="modalVideoSrc"
-            ref="videoPlayerRef"
-            :src="modalVideoSrc"
-            class="aspect-video max-h-[72vh] w-full rounded-xl bg-black object-contain"
-            controls
-            playsinline
-            preload="metadata"
-          />
+          <!-- 不用固定 16:9 盒子套住 video，避免与素材实际比例不一致时在部分浏览器下出现拉伸感；由固有宽高比 + max 尺寸约束 -->
+          <div v-if="modalVideoSrc" class="overflow-hidden rounded-xl bg-black">
+            <video
+              ref="videoPlayerRef"
+              :src="modalVideoSrc"
+              class="mx-auto max-h-[72vh] w-auto max-w-full object-contain"
+              controls
+              playsinline
+              preload="metadata"
+            />
+          </div>
           <div v-else class="flex aspect-video w-full flex-col items-center justify-center rounded-xl bg-slate-900 px-6 text-center">
             <p v-if="modalPosterSrc" class="text-sm text-slate-400">
               {{ store.t.museumVideoNoPreview }}
@@ -842,9 +803,7 @@ const cardGridClass =
             class="mt-4 w-full rounded-xl border border-slate-600/80 py-2.5 text-sm font-medium text-slate-200 transition hover:border-teal-500/60 hover:text-white"
             @click="openVideoFrameworkFromModal"
           >
-            {{
-              store.locale === 'zh' ? '查看内容框架与素材要求' : 'Open framework & material checklist'
-            }}
+            {{ store.locale === 'zh' ? '查看详情' : 'Open details' }}
           </button>
         </div>
       </div>

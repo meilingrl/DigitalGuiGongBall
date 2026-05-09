@@ -1,6 +1,9 @@
 /** ICH category — drives marker icon and colour */
 export type IchCategory = 'craft' | 'performing' | 'festival' | 'culinary' | 'museum'
 
+/** 与「数字博物馆」页面对应的探访地图场馆 id（点击查看详情时跳转展馆页） */
+export const EXPLORE_LINKED_MUSEUM_VENUE_ID = 'v001'
+
 export interface Venue {
   id: string
   nameZh: string

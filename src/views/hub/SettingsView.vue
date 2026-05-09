@@ -701,7 +701,7 @@ function resetExplorePreset() {
                 <button
                   type="button"
                   class="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 dark:border-slate-600 dark:text-slate-300"
-                  @click="resetFeedbackForm"
+                  @click="() => resetFeedbackForm()"
                 >
                   {{ store.t.feedbackReset }}
                 </button>

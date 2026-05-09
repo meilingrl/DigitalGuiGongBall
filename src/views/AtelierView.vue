@@ -10,6 +10,7 @@ const router = useRouter()
 const drawerOpen = ref(true)
 const uiVisible = ref(true)
 const autoRotate = ref(true)
+const FLAGSHIP_LAYER_COUNT = 6
 let healthTimer = 0
 let collabTimer = 0
 
@@ -38,6 +39,12 @@ function carvingToolLabel(id: CarvingToolId): string {
 
 const templateName = computed(() =>
   store.locale === 'zh' ? store.selectedTemplate.nameZh : store.selectedTemplate.nameEn,
+)
+
+const effectiveMaxLayers = computed(() => Math.min(store.maxLayers, FLAGSHIP_LAYER_COUNT))
+
+const collaboratorPreviewLayer = computed(
+  () => ((store.collaboratorLayer - 1) % effectiveMaxLayers.value) + 1,
 )
 
 const riskClass = computed(() =>
@@ -97,6 +104,7 @@ function onIdleActivity() {
 const wheelOpts: AddEventListenerOptions = { passive: true }
 
 onMounted(() => {
+  store.setLayerDepth(Math.min(store.layerDepth, effectiveMaxLayers.value))
   resetIdleTimer()
 
   window.addEventListener('mousemove', onIdleActivity)
@@ -192,7 +200,7 @@ onBeforeUnmount(() => {
     </Transition>
 
     <section class="absolute inset-0">
-      <AtelierScene :layer-depth="store.layerDepth" :max-layers="store.maxLayers" :theme="store.theme" :auto-rotate="autoRotate" />
+      <AtelierScene :layer-depth="store.layerDepth" :max-layers="effectiveMaxLayers" :theme="store.theme" :auto-rotate="autoRotate" />
     </section>
 
     <section class="pointer-events-none absolute inset-0 z-20">
@@ -305,7 +313,7 @@ onBeforeUnmount(() => {
             class="min-w-0 flex-1 accent-teal-600"
             type="range"
             min="1"
-            :max="store.maxLayers"
+            :max="effectiveMaxLayers"
             :value="store.layerDepth"
             @input="
               store.setLayerDepth(Number(($event.target as HTMLInputElement).value));
@@ -313,7 +321,7 @@ onBeforeUnmount(() => {
             "
           />
           <span class="shrink-0 text-xs tabular-nums text-slate-600 dark:text-slate-300"
-            >{{ store.layerDepth }}/{{ store.maxLayers }}</span
+            >{{ store.layerDepth }}/{{ effectiveMaxLayers }}</span
           >
         </div>
       </Transition>
@@ -379,7 +387,7 @@ onBeforeUnmount(() => {
                 class="rounded-lg px-3 py-2 text-xs"
                 :class="store.theme === 'light' ? 'bg-slate-100 text-slate-700' : 'bg-white/5 text-slate-200'"
               >
-                {{ store.t.collab }}: {{ store.t.collaborator }} L{{ store.collaboratorLayer }}
+                {{ store.t.collab }}: {{ store.t.collaborator }} L{{ collaboratorPreviewLayer }}
               </p>
               <p class="rounded-lg bg-white/5 px-3 py-2 text-xs">
                 {{ store.t.risk }}:

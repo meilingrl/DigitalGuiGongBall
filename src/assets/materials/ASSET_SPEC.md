@@ -81,3 +81,12 @@
 - `public/previews/video2.mp4` -> `public/materials/museum/videos/previews/museum-video-preview-02-v1.0.mp4`
 - `public/previews/video3.mp4` -> `public/materials/museum/videos/previews/museum-video-preview-03-v1.0.mp4`
 - `public/previews/video4.mp4` -> `public/materials/museum/videos/previews/museum-video-preview-04-v1.0.mp4`
+
+## 8) Additions (2026-05)
+
+以下条目在 v1 迁移表之后新增或扩展，路径以仓库当前状态为准：
+
+- **展览卡片图**：`public/materials/museum/exhibitions/*.webp`（博物馆展讯卡片）
+- **商城商品图**：`public/materials/mall/products/*.webp`（与 `src/data/mall.ts` 中 `image` 字段对应）
+- **旗舰鬼工球 GLB**：`src/assets/materials/models/museum-model-guigong-flagship-main-v1.0.glb`，元数据 `documents/museum-model-guigong-flagship-main-v1.0.md`
+- **原器预览用 Blender 源**：`src/assets/materials/models/museum-model-guigong-original-optimized-preview-v1.0.blend`（及可选 `.blend1` 备份），由 `tools/blender/generate_original_optimized_preview.py` 等脚本维护
