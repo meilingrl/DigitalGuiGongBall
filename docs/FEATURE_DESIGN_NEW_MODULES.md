@@ -1,6 +1,6 @@
 # 新功能模块设计文档：探索模块 & 文创商城
 
-> 版本：v1.0 | 日期：2026-04-08  
+> 版本：v1.1 | 日期：2026-05-09（Hub 导航结构增补 Settings，其余章节仍以 v1.0 为基线）  
 > 依附于主文档：`TEAM_WORKPLAN.md` & `DEFENSE_REPORT_KEYPOINTS.md`
 
 ---
@@ -24,7 +24,8 @@ Hub
 ├── Social（社区）
 ├── Explore（探索）          ← 新增
 ├── Mall（文创商城）          ← 新增
-└── Stats（数据）
+├── Stats（数据）
+└── Settings（设置）
 ```
 
 ---

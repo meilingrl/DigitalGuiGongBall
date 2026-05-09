@@ -63,8 +63,11 @@ digital-guigong-ball/
 │   ├── DEFENSE_REPORT_KEYPOINTS.md
 │   ├── TEAM_WORKPLAN.md
 │   ├── NEXT_ITERATION_BACKLOG.md  # 下一轮需求对齐与 backlog
+│   ├── ASSET_IMAGE_PROMPTS.md     # 生图 prompt 备忘（博物馆 / 探索 / 商城）
 │   └── VideoCard-design.md
-├── public/                        # 站点静态资源（favicon、icons、封面与短预览视频等）
+├── tools/                         # 本地工具脚本（如 Blender 程序化生成模型）
+│   └── blender/
+├── public/                        # 站点静态资源（favicon、icons、`materials/` 下按模块组织的图片与视频等）
 ├── index.html                     # HTML 入口
 ├── package.json
 ├── package-lock.json
@@ -78,7 +81,8 @@ digital-guigong-ball/
     ├── main.ts                    # 应用入口
     ├── App.vue
     ├── style.css                  # 全局样式
-    ├── assets/                    # 静态资源（图片、SVG 等）
+    ├── assets/                    # 随构建打包的静态资源
+    │   └── materials/             # 素材规范与元数据，见 ASSET_SPEC.md
     ├── utils/
     │   └── publicUrl.ts          # public 资源 URL（支持 Vite BASE_URL）
     ├── components/               # 通用组件
@@ -88,7 +92,9 @@ digital-guigong-ball/
     │   ├── HubSidebarDock.vue
     │   ├── HubBottomBar.vue
     │   ├── TemplateCard.vue
-    │   └── ThemeToggle.vue
+    │   ├── ThemeToggle.vue
+    │   ├── quiz/                 # 答题相关子组件
+    │   └── chat/                 # 社交会话相关子组件
     ├── composables/             # 组合式函数
     │   └── usePointerType.ts
     ├── data/                    # 展示用数据与文案
@@ -127,7 +133,7 @@ digital-guigong-ball/
 ```
 
 构建产物 `dist/`、`node_modules/`、`.env` 等由 `.gitignore` 忽略，不在版本库中列出。  
-**视频资源**：博物馆卡片使用 `public/covers/` 与 `public/previews/`（体积较小，可入库）。**完整原片**建议仅本地放在 `public/raw/`（已在 `.gitignore` 中忽略，避免超过 GitHub 单文件 100MB 限制）；克隆仓库后若需原片可自行补全该目录。
+**视频与展览图**：博物馆短视频封面与预览位于 `public/materials/museum/videos/covers/`、`public/materials/museum/videos/previews/`；展览卡片图在 `public/materials/museum/exhibitions/`；商城商品图在 `public/materials/mall/products/`。命名与迁移记录见 `src/assets/materials/ASSET_SPEC.md`。**完整原片**建议仅本地放在 `public/raw/`（已在 `.gitignore` 中忽略，避免超过 GitHub 单文件 100MB 限制）；克隆仓库后若需原片可自行补全该目录。
 
 ---
 
@@ -169,6 +175,7 @@ digital-guigong-ball/
 | 持续         | 业务扩展               | 探索 / 商城 / 社交等 Hub 子页与积分等状态；侧栏、底栏与主题切换等横切 UI。                                            | `src/views/hub/`、`src/stores/points.ts`      |
 | 2026-04-12 | 仓库与文档整理            | 以本仓库为唯一准线重建 Git 历史并推送远程；根目录 README 与 `docs/README.md` 按当前目录结构重写。                        | 本文件、`docs/README.md`                         |
 | 2026-04-23 | 工程整理与版本库卫生        | 移除脚手架残留；完善 `.gitignore`（含 `public/raw/` 大文件）；补充 `public/`、`LoginView`、`NEXT_ITERATION_BACKLOG` 等目录说明。 | `.gitignore`、本文件、`docs/NEXT_ITERATION_BACKLOG.md` |
+| 2026-05-09 | 素材与 3D 资产管线          | `public/materials/` 分模块资源、`src/assets/materials/` 规范与模型元数据；Blender 脚本生成旗舰鬼工球 GLB 等；Hub 子组件（quiz/chat）与数据层持续迭代。 | `src/assets/materials/ASSET_SPEC.md`、`tools/blender/`、`src/components/` |
 
 
 > **维护约定**：每次重要里程碑（设计定稿、大功能合入、演示前冻结）建议在本表增一行，并在 PR / 提交说明中引用对应 `docs` 或 Issue，便于课程过程材料对齐。

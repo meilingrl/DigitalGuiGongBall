@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { AMapAdapter } from '../../map/AMapAdapter'
 import { createMarkerElement, ensureMarkerAnimations } from '../../map/markerFactory'
 import { useMapStore } from '../../stores/map'
 import { useAppStore } from '../../stores/app'
 import { usePointsStore, TASK_IDS } from '../../stores/points'
-import { useExploreProfileStore, type TransportMode } from '../../stores/exploreProfile'
-import { activities, venues, type Activity, type Venue } from '../../data/explore'
+import { useExploreProfileStore, type CheckinSimPreset, type TransportMode } from '../../stores/exploreProfile'
+import {
+  activities,
+  venues,
+  EXPLORE_LINKED_MUSEUM_VENUE_ID,
+  type Activity,
+  type Venue,
+} from '../../data/explore'
 import { resolvePublicUrl } from '../../utils/publicUrl'
 
+const route = useRoute()
+const router = useRouter()
 const store = useAppStore()
 const mapStore = useMapStore()
 const pointsStore = usePointsStore()
@@ -24,8 +33,10 @@ const mapFilter = computed(() => {
   return 'saturate(0.55) brightness(1.02) contrast(0.95)'
 })
 
-// ─── Map container ref (floating card anchoring) ─────────────────────────────
+// ─── Map container ref (venue pin card: absolute inside map, not fixed on body) ─
 const mapContainerRef = ref<HTMLElement | null>(null)
+const venueCardRef = ref<HTMLElement | null>(null)
+const venueDetailPanelRef = ref<HTMLElement | null>(null)
 
 const cardPos = ref({ x: 0, y: 0 })
 const cardVisible = ref(false)
@@ -38,12 +49,26 @@ function updateCardPos(): void {
   }
   const pixel = adapter.lngLatToPixel({ lng: venue.lng, lat: venue.lat })
   if (!pixel) { cardVisible.value = false; return }
-  const rect = mapContainerRef.value.getBoundingClientRect()
-  cardPos.value = {
-    x: rect.left + pixel.x + 18,
-    y: rect.top + pixel.y - 80,
-  }
+  // lngLatToContainer is already relative to the map container — avoid viewport coords + fixed,
+  // or the card will detach when the page scrolls.
+  cardPos.value = { x: pixel.x + 18, y: pixel.y - 80 }
   cardVisible.value = true
+}
+
+function dismissPinnedVenueFromOutsidePointer(ev: PointerEvent): void {
+  if (!mapStore.pinnedVenueId) return
+  const el = ev.target
+  if (!(el instanceof Node)) return
+  if (venueCardRef.value?.contains(el)) return
+  mapStore.pinVenue(null)
+}
+
+function unpinPinnedVenueOnScroll(): void {
+  if (mapStore.pinnedVenueId) mapStore.pinVenue(null)
+}
+
+function onWindowResizePinnedCard(): void {
+  if (mapStore.pinnedVenueId) updateCardPos()
 }
 
 function onMapMove(): void { updateCardPos() }
@@ -335,6 +360,15 @@ const checkinDone = ref<string | null>(null)
 const lastCheckinDistanceM = ref<number | null>(null)
 const checkinError = ref<string | null>(null)
 const checkinActivityId = ref<string | null>(null)
+
+watch(
+  () => exploreProfileStore.checkinSimPreset,
+  () => {
+    checkinError.value = null
+    checkinActivityId.value = null
+  },
+)
+
 const phoneRegex = /^1\d{10}$/
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const selectFieldClass =
@@ -532,34 +566,12 @@ function submitBook() {
   bookMode.value = 'created'
 }
 
-function getCurrentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('geolocation not supported'))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 8000,
-      maximumAge: 60000,
-    })
-  })
-}
-
-async function doCheckin(activity: Activity) {
+function doCheckin(activity: Activity) {
   if (checkedIn.value.has(activity.id)) return
   const venue = venues.find((v) => v.id === activity.venueId)
   if (!venue) return
-  let distance = Number.POSITIVE_INFINITY
-  try {
-    const pos = await getCurrentPosition()
-    distance = haversineMetres(pos.coords.latitude, pos.coords.longitude, venue.lat, venue.lng)
-  } catch {
-    checkinActivityId.value = activity.id
-    checkinError.value = store.locale === 'zh' ? '定位失败，请检查定位权限后重试' : 'Location failed. Please enable permissions and try again.'
-    checkinDone.value = null
-    return
-  }
+  const { lat: userLat, lng: userLng } = simulatedUserLatLng(venue, exploreProfileStore.checkinSimPreset)
+  const distance = haversineMetres(userLat, userLng, venue.lat, venue.lng)
   lastCheckinDistanceM.value = Math.round(distance)
   checkinActivityId.value = activity.id
   if (distance > GEOFENCE_RADIUS) {
@@ -579,7 +591,41 @@ async function doCheckin(activity: Activity) {
 function closeVenuePanel() {
   mapStore.setActiveVenue(null)
   mapStore.pinVenue(null)
+  if (route.name === 'hub-explore' && route.query.venue !== undefined) {
+    const q = { ...route.query }
+    delete q.venue
+    void router.replace({ query: q })
+  }
 }
+
+function openVenueDetailsFromCard(v: Venue): void {
+  mapStore.pinVenue(null)
+  if (v.id === EXPLORE_LINKED_MUSEUM_VENUE_ID) {
+    void router.push({ name: 'hub-museum' })
+    return
+  }
+  mapStore.setActiveVenue(v.id)
+  void router.push({ name: 'hub-explore', query: { ...route.query, venue: v.id } })
+  nextTick(() => {
+    venueDetailPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
+
+watch(
+  () => route.query.venue,
+  (raw) => {
+    if (route.name !== 'hub-explore') return
+    const id = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : undefined
+    if (!id || typeof id !== 'string') return
+    if (!venues.some((x) => x.id === id)) return
+    mapStore.setActiveVenue(id)
+    mapStore.pinVenue(null)
+    nextTick(() => {
+      venueDetailPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  },
+  { immediate: true },
+)
 
 function venueName(v: Venue) { return store.locale === 'zh' ? v.nameZh : v.nameEn }
 function venueAddress(v: Venue) { return store.locale === 'zh' ? v.addressZh : v.addressEn }
@@ -644,63 +690,66 @@ function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number)
 
 const GEOFENCE_RADIUS = 300
 
-function navigateTo(venue: Venue): void {
-  routeState.value = 'locating'
-  routeMsg.value = store.locale === 'zh' ? '正在获取位置…' : 'Getting your location…'
-  routeVenueId.value = venue.id
+function offsetFromVenue(lat: number, lng: number, distanceM: number, bearingDeg: number) {
+  const R = 6371000
+  const φ1 = (lat * Math.PI) / 180
+  const λ1 = (lng * Math.PI) / 180
+  const θ = (bearingDeg * Math.PI) / 180
+  const δ = distanceM / R
+  const sinφ1 = Math.sin(φ1)
+  const cosφ1 = Math.cos(φ1)
+  const sinδ = Math.sin(δ)
+  const cosδ = Math.cos(δ)
+  const φ2 = Math.asin(sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ))
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2))
+  return { lat: (φ2 * 180) / Math.PI, lng: (λ2 * 180) / Math.PI }
+}
 
-  if (!navigator.geolocation) {
-    routeState.value = 'error'
-    routeMsg.value = store.locale === 'zh' ? '浏览器不支持定位' : 'Geolocation not supported'
+const CHECKIN_SIM_DIST_M: Record<CheckinSimPreset, number> = {
+  nearby: 100,
+  same_city: 2500,
+  far: 50000,
+}
+
+function simulatedUserLatLng(venue: { lat: number; lng: number }, sim: CheckinSimPreset) {
+  return offsetFromVenue(venue.lat, venue.lng, CHECKIN_SIM_DIST_M[sim], 38)
+}
+
+function navigateTo(venue: Venue): void {
+  routeVenueId.value = venue.id
+  routeState.value = 'locating'
+  routeMsg.value = t.value.exploreRoutePreparingSim
+
+  const { lat: userLat, lng: userLng } = simulatedUserLatLng(venue, exploreProfileStore.checkinSimPreset)
+  const dist = haversineMetres(userLat, userLng, venue.lat, venue.lng)
+
+  if (dist <= GEOFENCE_RADIUS) {
+    routeState.value = 'geofence_ok'
+    routeMsg.value = t.value.exploreRouteMockInsideFence.replace('{distance}', String(Math.round(dist)))
+    const vActs = mapStore.visibleActivities.filter((a) => a.venueId === venue.id)
+    if (vActs.length > 0 && !checkedIn.value.has(vActs[0].id)) {
+      doCheckin(vActs[0])
+    }
     return
   }
 
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const userLat = pos.coords.latitude
-      const userLng = pos.coords.longitude
-      const dist = haversineMetres(userLat, userLng, venue.lat, venue.lng)
-
-      if (dist <= GEOFENCE_RADIUS) {
-        routeState.value = 'geofence_ok'
-        routeMsg.value = store.locale === 'zh'
-          ? `已到达！距场馆 ${Math.round(dist)} 米，自动签到成功 ✓`
-          : `Arrived! ${Math.round(dist)} m away — checked in ✓`
-        const vActs = mapStore.visibleActivities.filter((a) => a.venueId === venue.id)
-        if (vActs.length > 0 && !checkedIn.value.has(vActs[0].id)) {
-          doCheckin(vActs[0])
-        }
-        return
-      }
-
-      routeState.value = 'drawing'
-      routeMsg.value = store.locale === 'zh' ? '正在规划路线…' : 'Planning route…'
-      try {
-        await adapter?.drawWalkingRoute(
-          { lng: userLng, lat: userLat },
-          { lng: venue.lng, lat: venue.lat },
-        )
-        routeState.value = 'done'
-        routeMsg.value = store.locale === 'zh'
-          ? `步行路线已显示（距场馆约 ${Math.round(dist)} 米）`
-          : `Walking route shown (${Math.round(dist)} m away)`
-        renderVenueMarkers()
-        renderActivityMarkers()
-      } catch {
-        routeState.value = 'done'
-        routeMsg.value = store.locale === 'zh'
-          ? `距场馆约 ${(dist / 1000).toFixed(1)} 公里，请使用地图应用导航`
-          : `~${(dist / 1000).toFixed(1)} km away — use your maps app to navigate`
-      }
-    },
-    (err) => {
+  routeState.value = 'drawing'
+  routeMsg.value = store.locale === 'zh' ? '正在规划路线…' : 'Planning route…'
+  void (async () => {
+    try {
+      await adapter?.drawWalkingRoute(
+        { lng: userLng, lat: userLat },
+        { lng: venue.lng, lat: venue.lat },
+      )
       routeState.value = 'done'
-      routeMsg.value = store.locale === 'zh'
-        ? `定位失败 (${err.code})，请检查定位权限后重试`
-        : `Location denied (${err.code}). Please enable permissions and retry.`
-    },
-    { timeout: 8000, maximumAge: 60000 },
-  )
+      routeMsg.value = t.value.exploreRouteMockShown.replace('{distance}', String(Math.round(dist)))
+      renderVenueMarkers()
+      renderActivityMarkers()
+    } catch {
+      routeState.value = 'done'
+      routeMsg.value = t.value.exploreRouteMockFallbackKm.replace('{km}', (dist / 1000).toFixed(1))
+    }
+  })()
 }
 
 const categoryColour: Record<string, string> = {
@@ -712,8 +761,16 @@ const categoryColour: Record<string, string> = {
 }
 function categoryBadge(v: Venue) { return categoryColour[v.ichCategory] ?? categoryColour.museum }
 
-onMounted(() => { initMap() })
+onMounted(() => {
+  initMap()
+  document.addEventListener('pointerdown', dismissPinnedVenueFromOutsidePointer, true)
+  window.addEventListener('scroll', unpinPinnedVenueOnScroll, { passive: true })
+  window.addEventListener('resize', onWindowResizePinnedCard)
+})
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', dismissPinnedVenueFromOutsidePointer, true)
+  window.removeEventListener('scroll', unpinPinnedVenueOnScroll)
+  window.removeEventListener('resize', onWindowResizePinnedCard)
   mapStore.reset()
   adapter = null
 })
@@ -726,6 +783,37 @@ onBeforeUnmount(() => {
       <h2 class="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{{ t.exploreIntro }}</h2>
       <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{{ t.exploreBody }}</p>
     </header>
+
+    <div
+      class="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-700 dark:bg-slate-900/80"
+    >
+      <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">{{ t.exploreCheckinMockLocation }}</p>
+      <p class="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+        {{ t.exploreCheckinSimulatedHint }}
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          v-for="opt in (['nearby', 'same_city', 'far'] as const)"
+          :key="opt"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
+          :class="
+            exploreProfileStore.checkinSimPreset === opt
+              ? 'bg-teal-700 text-white dark:bg-teal-600'
+              : 'border border-slate-200 bg-slate-50 text-slate-700 hover:border-teal-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+          "
+          @click="exploreProfileStore.setCheckinSimPreset(opt)"
+        >
+          {{
+            opt === 'nearby'
+              ? t.exploreCheckinMockNearby
+              : opt === 'same_city'
+                ? t.exploreCheckinMockSameCity
+                : t.exploreCheckinMockFar
+          }}
+        </button>
+      </div>
+    </div>
 
     <!-- Activity detail (independent of calendar; opened from map / list / card) -->
     <Transition
@@ -849,7 +937,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>{{ store.locale === 'zh' ? '系统将根据当前位置自动判定签到范围。' : 'Check-in range is validated by your current location.' }}</span>
+              <span>{{ t.exploreCheckinSimulatedHint }}</span>
               <span v-if="lastCheckinDistanceM !== null && checkinActivityId === selectedActivity.id">
                 {{ t.exploreCheckinDistanceHint.replace('{distance}', String(lastCheckinDistanceM)) }}
               </span>
@@ -879,7 +967,10 @@ onBeforeUnmount(() => {
               {{ store.locale === 'zh' ? `视野内场馆 (${mapStore.visibleVenues.length})` : `In view (${mapStore.visibleVenues.length})` }}
             </p>
           </div>
-          <div class="max-h-[min(52vh,520px)] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+          <div
+            class="max-h-[min(52vh,520px)] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800"
+            @scroll.passive="unpinPinnedVenueOnScroll"
+          >
             <button
               v-for="v in mapStore.visibleVenues"
               :key="v.id"
@@ -952,10 +1043,102 @@ onBeforeUnmount(() => {
 
             <div
               v-if="mapStore.mapReady"
-              class="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-white/85 px-3 py-1.5 text-xs text-slate-600 shadow-sm backdrop-blur-sm dark:bg-slate-900/85 dark:text-slate-300"
+              class="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg bg-white/85 px-3 py-1.5 text-xs text-slate-600 shadow-sm backdrop-blur-sm dark:bg-slate-900/85 dark:text-slate-300"
             >
               {{ t.exploreMapHint }}
             </div>
+
+            <Transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 scale-95 translate-y-1"
+              enter-to-class="opacity-100 scale-100 translate-y-0"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="opacity-100 scale-100 translate-y-0"
+              leave-to-class="opacity-0 scale-95 translate-y-1"
+            >
+              <div
+                v-if="cardVisible && mapStore.pinnedVenue"
+                ref="venueCardRef"
+                class="pointer-events-auto absolute z-20 w-64 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                :style="{ left: `${cardPos.x}px`, top: `${cardPos.y}px` }"
+              >
+                <div class="flex items-start gap-2 border-b border-slate-100 p-3 dark:border-slate-800">
+                  <span
+                    class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                    :class="{
+                      'bg-teal-600': mapStore.pinnedVenue.ichCategory === 'museum',
+                      'bg-amber-600': mapStore.pinnedVenue.ichCategory === 'craft',
+                      'bg-purple-600': mapStore.pinnedVenue.ichCategory === 'performing',
+                      'bg-rose-600': mapStore.pinnedVenue.ichCategory === 'festival',
+                      'bg-green-600': mapStore.pinnedVenue.ichCategory === 'culinary',
+                    }"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                      {{ venueName(mapStore.pinnedVenue) }}
+                    </p>
+                    <p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      {{ mapStore.pinnedVenue.city }} · {{ venueType(mapStore.pinnedVenue) }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                    @click="mapStore.pinVenue(null)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="p-3 space-y-2">
+                  <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    {{ store.locale === 'zh' ? '活动预约' : 'Book Events' }}
+                  </p>
+                  <template v-if="mapStore.venueActivities(mapStore.pinnedVenue.id).length > 0">
+                    <button
+                      v-for="a in mapStore.venueActivities(mapStore.pinnedVenue.id).slice(0, 2)"
+                      :key="a.id"
+                      type="button"
+                      class="w-full rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-left transition hover:border-teal-200 dark:border-slate-800 dark:bg-slate-800/50 dark:hover:border-teal-800"
+                      @click="openActivity(a)"
+                    >
+                      <p class="text-xs font-medium leading-snug text-slate-800 dark:text-slate-200">{{ actTitle(a) }}</p>
+                      <p class="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{{ a.date }}</p>
+                      <div v-if="a.quota && a.remaining !== null" class="mt-1.5">
+                        <div class="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">
+                          <span>{{ store.locale === 'zh' ? '名额' : 'Spots' }}</span>
+                          <span :class="a.remaining <= 5 ? 'text-amber-600 dark:text-amber-400' : ''">
+                            {{ a.remaining }}/{{ a.quota }}
+                          </span>
+                        </div>
+                        <div class="h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700">
+                          <div
+                            class="h-1 rounded-full transition-all duration-500"
+                            :class="(a.remaining / a.quota) < 0.3 ? 'bg-amber-500' : 'bg-teal-500'"
+                            :style="{ width: `${((a.quota - a.remaining) / a.quota) * 100}%` }"
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  </template>
+                  <p v-else class="text-xs text-slate-400 dark:text-slate-500">
+                    {{ store.locale === 'zh' ? '当前筛选下暂无活动' : 'No events for current filter' }}
+                  </p>
+                </div>
+
+                <div class="flex gap-2 border-t border-slate-100 px-3 py-2.5 dark:border-slate-800">
+                  <button
+                    type="button"
+                    class="flex-1 rounded-lg bg-teal-800 py-1.5 text-xs font-medium text-white transition hover:bg-teal-900 dark:bg-teal-600 dark:hover:bg-teal-500"
+                    @click="openVenueDetailsFromCard(mapStore.pinnedVenue!)"
+                  >
+                    {{ store.locale === 'zh' ? '查看详情' : 'View details' }}
+                  </button>
+                </div>
+              </div>
+            </Transition>
           </div>
 
           <Transition
@@ -968,6 +1151,7 @@ onBeforeUnmount(() => {
           >
             <div
               v-if="mapStore.activeVenue"
+              ref="venueDetailPanelRef"
               class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft dark:border-slate-700 dark:bg-slate-900"
             >
               <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-teal-50 to-teal-100 px-6 py-5 dark:from-teal-950/50 dark:to-teal-900/30">
@@ -1193,100 +1377,6 @@ onBeforeUnmount(() => {
         </aside>
       </div>
     </div>
-
-    <!-- Floating venue card -->
-    <Teleport to="body">
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 scale-95 translate-y-1"
-        enter-to-class="opacity-100 scale-100 translate-y-0"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100 scale-100 translate-y-0"
-        leave-to-class="opacity-0 scale-95 translate-y-1"
-      >
-        <div
-          v-if="cardVisible && mapStore.pinnedVenue"
-          class="fixed z-[300] w-64 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
-          :style="{ left: `${cardPos.x}px`, top: `${cardPos.y}px` }"
-        >
-          <div class="flex items-start gap-2 border-b border-slate-100 p-3 dark:border-slate-800">
-            <span
-              class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
-              :class="{
-                'bg-teal-600': mapStore.pinnedVenue.ichCategory === 'museum',
-                'bg-amber-600': mapStore.pinnedVenue.ichCategory === 'craft',
-                'bg-purple-600': mapStore.pinnedVenue.ichCategory === 'performing',
-                'bg-rose-600': mapStore.pinnedVenue.ichCategory === 'festival',
-                'bg-green-600': mapStore.pinnedVenue.ichCategory === 'culinary',
-              }"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                {{ venueName(mapStore.pinnedVenue) }}
-              </p>
-              <p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                {{ mapStore.pinnedVenue.city }} · {{ venueType(mapStore.pinnedVenue) }}
-              </p>
-            </div>
-            <button
-              type="button"
-              class="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-              @click="mapStore.pinVenue(null); cardVisible = false"
-            >
-              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <div class="p-3 space-y-2">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {{ store.locale === 'zh' ? '活动预约' : 'Book Events' }}
-            </p>
-            <template v-if="mapStore.venueActivities(mapStore.pinnedVenue.id).length > 0">
-              <button
-                v-for="a in mapStore.venueActivities(mapStore.pinnedVenue.id).slice(0, 2)"
-                :key="a.id"
-                type="button"
-                class="w-full rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-left transition hover:border-teal-200 dark:border-slate-800 dark:bg-slate-800/50 dark:hover:border-teal-800"
-                @click="openActivity(a)"
-              >
-                <p class="text-xs font-medium leading-snug text-slate-800 dark:text-slate-200">{{ actTitle(a) }}</p>
-                <p class="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{{ a.date }}</p>
-                <div v-if="a.quota && a.remaining !== null" class="mt-1.5">
-                  <div class="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">
-                    <span>{{ store.locale === 'zh' ? '名额' : 'Spots' }}</span>
-                    <span :class="a.remaining <= 5 ? 'text-amber-600 dark:text-amber-400' : ''">
-                      {{ a.remaining }}/{{ a.quota }}
-                    </span>
-                  </div>
-                  <div class="h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700">
-                    <div
-                      class="h-1 rounded-full transition-all duration-500"
-                      :class="(a.remaining / a.quota) < 0.3 ? 'bg-amber-500' : 'bg-teal-500'"
-                      :style="{ width: `${((a.quota - a.remaining) / a.quota) * 100}%` }"
-                    />
-                  </div>
-                </div>
-              </button>
-            </template>
-            <p v-else class="text-xs text-slate-400 dark:text-slate-500">
-              {{ store.locale === 'zh' ? '当前筛选下暂无活动' : 'No events for current filter' }}
-            </p>
-          </div>
-
-          <div class="flex gap-2 border-t border-slate-100 px-3 py-2.5 dark:border-slate-800">
-            <button
-              type="button"
-              class="flex-1 rounded-lg bg-teal-800 py-1.5 text-xs font-medium text-white transition hover:bg-teal-900 dark:bg-teal-600 dark:hover:bg-teal-500"
-              @click="mapStore.setActiveVenue(mapStore.pinnedVenue!.id)"
-            >
-              {{ store.locale === 'zh' ? '查看详情' : 'View details' }}
-            </button>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
 
     <!-- Book modal -->
     <Teleport to="body">

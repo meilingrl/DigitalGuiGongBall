@@ -20,8 +20,8 @@
 | **2.2**  | 业务级"信息名片"系统       | ✅      | 侧边面板已实现                                | 原生 InfoWindow 已弃用，当前面板可升级                              | 浮动卡片组件 + 预约进度条                       |
 | **2.3**  | 地图-列表-详情三联动       | ✅      | 无侧边列表，仅有 Map+Panel                     | 需新增 Venue 列表列 + bounds 监听                              | Pinia mapStore + `map.on('moveend')` |
 | **3.1**  | 时间轴活动筛选 + 动画      | ✅      | 有活动日历，但未与地图联动                          | 需在地图层新增活动 Marker 图层                                    | 双重图层（venues + activities）            |
-| **3.2**  | 路径规划（最后一百米）       | ⚠️     | 无                                      | 需 AMap Driving/Walking API + 用户定位                      | 模拟路径展示 + 浏览器 Geolocation             |
-| **3.2b** | 地理围栏自动签到          | ⚠️     | 签到为手动触发                                | 浏览器 GPS 精度有限；Web 环境无后台围栏监听                             | 前台轮询 Geolocation + 距离阈值判断            |
+| **3.2**  | 路径规划（最后一百米）       | ⚠️     | `ExploreView` 步行路线演示                          | AMap Walking 路径依赖有效 Key；**起点为用户模拟坐标**（非设备 GPS）                      | 模拟路径展示 + **探访页坐标预设**（Pinia 持久化，见 `exploreProfile.checkinSimPreset`）             |
+| **3.2b** | 地理围栏自动签到          | ⚠️     | 手动触发签到 + 距离判定                                | 课程原型不依赖真实定位                              | **Haversine + 模拟用户坐标**；与 `GEOFENCE_RADIUS` 一致；不调用 `navigator.geolocation`            |
 | **3.3**  | 室内外平滑切换           | ❌      | 无                                      | 需高德室内地图商业协议 + 室内图纸资产                                   | 设计稿中展示概念；代码降级为楼层选择 UI                |
 | **4.1**  | 点聚合 / Canvas 渲染   | ✅      | 单点 HTML Marker                         | 需加载 `AMap.MarkerClusterer` 插件                          | 阈值动态切换（< 20点用HTML，≥ 20用Cluster）      |
 | **4.2**  | 可插拔地图 Provider 架构 | ✅      | AMap 硬耦合                               | 无运行时换库需求，但抽象接口可设计                                      | `MapAdapter` 接口 + AMapAdapter 实现类    |

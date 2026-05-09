@@ -17,6 +17,8 @@
 | [TEAM_WORKPLAN.md](./TEAM_WORKPLAN.md)                           | 团队工作计划                  |
 | [VideoCard-design.md](./VideoCard-design.md)                     | 视频卡片组件设计与实现说明           |
 | [NEXT_ITERATION_BACKLOG.md](./NEXT_ITERATION_BACKLOG.md)         | 下一轮迭代：需求对齐与任务评估           |
+| [ASSET_IMAGE_PROMPTS.md](./ASSET_IMAGE_PROMPTS.md)                 | 博物馆 / 探索 / 商城等生图英文 prompt 备忘 |
+| [素材规范](../src/assets/materials/ASSET_SPEC.md)                  | `materials` 目录约定、命名、公开资源迁移记录   |
 
 
 ---
@@ -26,6 +28,7 @@
 - **地图探索页** → `src/views/hub/ExploreView.vue`，地图抽象 → `src/map/`、`src/stores/map.ts`
 - **Hub 布局与导航** → `src/layouts/HubLayout.vue`，侧栏/底栏组件 → `src/components/HubSidebarDock.vue`、`HubBottomBar.vue`
 - **三维工坊** → `src/views/AtelierView.vue`、`src/components/AtelierScene.vue`
+- **程序化 3D 资产** → `tools/blender/*.py`，发布模型与元数据 → `src/assets/materials/models/`、`documents/`
 - **积分等业务状态** → `src/stores/points.ts` 等
 - **各 Hub 子页数据** → `src/data/*.ts`
 
