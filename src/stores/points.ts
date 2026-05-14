@@ -24,7 +24,7 @@ export interface PointTask {
 }
 
 export const usePointsStore = defineStore('points', () => {
-  const balance = ref(0)
+  const balance = ref(300)
 
   const tasks = ref<PointTask[]>([
     {
