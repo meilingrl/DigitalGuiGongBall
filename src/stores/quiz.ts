@@ -37,10 +37,34 @@ function hashSeed(str: string): number {
   return h >>> 0
 }
 
-export const useQuizStore = defineStore('quiz', () => {
-  const stored = JSON.parse(localStorage.getItem('quiz_state') || '{}')
+function loadStoredQuizState(): Partial<{
+  records: QuizRecord[]
+  dailyAttemptedToday: boolean
+  dailyDateStamp: string
+  dailyHighScore: number
+  dailyHighCombo: number
+  dailyRank: number
+  quickBattleBest: number
+  quickBattleBestCombo: number
+  totalQuizzes: number
+  totalCorrect: number
+  streakDays: number
+  lastQuizDate: string
+}> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const value = JSON.parse(window.localStorage.getItem('quiz_state') || '{}')
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  } catch {
+    window.localStorage.removeItem('quiz_state')
+    return {}
+  }
+}
 
-  const records = ref<QuizRecord[]>(stored.records || [])
+export const useQuizStore = defineStore('quiz', () => {
+  const stored = loadStoredQuizState()
+
+  const records = ref<QuizRecord[]>(Array.isArray(stored.records) ? stored.records : [])
   const dailyAttemptedToday = ref<boolean>(stored.dailyAttemptedToday || false)
   const dailyDateStamp = ref<string>(stored.dailyDateStamp || '')
   const dailyHighScore = ref<number>(stored.dailyHighScore || 0)
@@ -61,7 +85,7 @@ export const useQuizStore = defineStore('quiz', () => {
 
   function persist() {
     reconcileAggregatesFromRecords()
-    localStorage.setItem(
+    window.localStorage.setItem(
       'quiz_state',
       JSON.stringify({
         records: records.value,

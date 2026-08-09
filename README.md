@@ -35,13 +35,13 @@ Vue 3 + TypeScript 前端：Hub 多业务页、高德地图探索、三维工坊
 npm install
 ```
 
-在项目根目录创建 `.env`（勿将含真实 Key 的 `.env` 提交到远程）：
+复制环境变量示例，并填写仅用于当前站点的 Web JS Key：
 
-```env
-VITE_AMAP_KEY=你的高德_Web端_JS_API_Key
+```bash
+cp .env.example .env
 ```
 
-在 [高德开放平台](https://lbs.amap.com/) 申请 **Web 端（JS API）** Key。修改 `.env` 后需重启开发服务器。
+在 [高德开放平台](https://lbs.amap.com/) 申请 **Web 端（JS API）** Key，并把允许域名限制为实际开发/部署域名。`VITE_*` 变量会进入浏览器构建，不能当作服务端秘密；生产使用安全密钥时应采用高德推荐的代理方式，而不是把安全密钥明文打包。修改 `.env` 后需重启开发服务器。
 
 ```bash
 npm run dev      # 默认 http://localhost:5173，/ 会重定向到 /login；进入 Hub 后为 /hub/dashboard
@@ -141,6 +141,8 @@ digital-guigong-ball/
 
 本项目对应**人机交互的软件工程方法**课程实践：在明确边界的前提下，用可交付的原型串联「需求—设计—实现—验证」，并用文档保证可讲解、可追溯。
 
+登录、账户设置、预约、商城和社交等页面是交互原型，并不代表已经接入真实身份认证或后端业务系统。预约联系信息只保存在当前浏览器会话中；公开演示时应使用虚构数据，不要输入真实手机号、邮箱或紧急联系人。
+
 ### 过程模型（迭代 + 文档驱动）
 
 1. **界定范围**：在 MVP 内排优先级，明确「做 / 暂缓 / 不做」（见 `docs/TEAM_WORKPLAN.md` 中的目标、非目标与阶段划分）。
@@ -193,4 +195,3 @@ digital-guigong-ball/
 ## 相关链接
 
 - [Vue 3](https://vuejs.org/) · [Vite](https://vite.dev/) · [高德开放平台](https://lbs.amap.com/) · [Tailwind CSS](https://tailwindcss.com/)
-

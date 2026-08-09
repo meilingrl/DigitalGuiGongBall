@@ -473,7 +473,7 @@ function resetExplorePreset() {
               {{ label('探访预约预设', 'Explore Booking Preset') }}
             </h3>
             <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-              {{ label('保存常用信息，预约活动时自动回填。', 'Save frequent info and auto-fill your Explore bookings.') }}
+              {{ label('仅在当前浏览器会话保存，关闭标签页后清除；请使用演示信息。', 'Saved only for this browser session and cleared when the tab closes; use demo information.') }}
             </p>
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <input v-model="presetNameInput" type="text" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" :placeholder="label('姓名', 'Name')" />

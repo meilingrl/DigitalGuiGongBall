@@ -435,7 +435,7 @@ const qrGridStyle = computed(() => ({
 
 function hydrateBookedRecords() {
   if (typeof window === 'undefined') return
-  const raw = window.localStorage.getItem(BOOKING_STORAGE_KEY)
+  const raw = window.sessionStorage.getItem(BOOKING_STORAGE_KEY)
   if (!raw) return
   try {
     const parsed = JSON.parse(raw) as Record<string, BookingRecord>
@@ -447,7 +447,7 @@ function hydrateBookedRecords() {
 
 function persistBookedRecords() {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(BOOKING_STORAGE_KEY, JSON.stringify(bookedRecords.value))
+  window.sessionStorage.setItem(BOOKING_STORAGE_KEY, JSON.stringify(bookedRecords.value))
 }
 
 hydrateBookedRecords()

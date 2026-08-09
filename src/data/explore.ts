@@ -68,7 +68,7 @@ export const venues: Venue[] = [
       '常设「同心鬼工」主题展，以鬼工球多层镂空与同心圆结构为主线，配合史料与影像介绍广州牙雕鬼工球的历史与工艺要点，并可预约研学与手作体验。',
     descEn:
       'Permanent “Concentric Guigong” gallery traces multi-layer openwork ivory spheres and Guangzhou carving heritage, with archival media and bookable study sessions.',
-    image: '/materials/explore/venues/1.webp',
+    image: '/materials/museum/exhibitions/1.webp',
   },
   {
     id: 'v002',
@@ -91,7 +91,7 @@ export const venues: Venue[] = [
       '特展聚焦球体类工艺中的「层套」逻辑：从鬼工球同心层到核雕层次，展示苏作精工如何与广作鬼工球在审美与技法上对话。',
     descEn:
       'A special show on nested spheres — linking Guigong concentric layers with Suzhou micro-carving traditions.',
-    image: '/materials/explore/venues/2.webp',
+    image: '/materials/museum/exhibitions/2.webp',
   },
   {
     id: 'v003',
@@ -114,7 +114,7 @@ export const venues: Venue[] = [
       '沉浸式展区用三维拆解与互动沙盘演示鬼工球从整块料到数十层同心壳的形成过程，适合作为数字鬼工球项目的线下参照体验。',
     descEn:
       'Immersive zone uses 3D breakdowns and touch tables to explain how layered Guigong spheres are formed — a physical anchor for digital demos.',
-    image: '/materials/explore/venues/3.webp',
+    image: '/materials/museum/exhibitions/3.webp',
   },
   {
     id: 'v004',
@@ -137,7 +137,7 @@ export const venues: Venue[] = [
       '系统呈现广作牙雕与鬼工球传承谱系，结合节庆档期推出「一球一故事」导览与亲子拼图活动，突出鬼工球作为岭南工艺名片的文化叙事。',
     descEn:
       'Documents Guangzhou ivory carving lineage and Guigong Ball storytelling tours plus family workshops during festival seasons.',
-    image: '/materials/explore/venues/4.webp',
+    image: '/materials/museum/exhibitions/4.webp',
   },
 ]
 

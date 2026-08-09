@@ -46,7 +46,7 @@ export const useExploreProfileStore = defineStore('explore-profile', () => {
   function hydrateFromStorage(): void {
     if (hydrated.value || typeof window === 'undefined') return
     hydrated.value = true
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return
     try {
       const parsed = JSON.parse(raw) as Partial<ExploreProfilePreset & { checkinSimPreset?: unknown }>
@@ -74,7 +74,7 @@ export const useExploreProfileStore = defineStore('explore-profile', () => {
 
   function persist(): void {
     if (typeof window === 'undefined') return
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         ...preset.value,
