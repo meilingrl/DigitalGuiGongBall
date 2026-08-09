@@ -28,8 +28,13 @@ export class AMapAdapter implements MapAdapter {
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   async init(containerId: string, options: MapInitOptions = {}): Promise<void> {
-    const key = import.meta.env.VITE_AMAP_KEY as string
+    const key = import.meta.env.VITE_AMAP_KEY?.trim()
     if (!key) throw new Error('VITE_AMAP_KEY is not set')
+
+    const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_CODE?.trim()
+    if (securityJsCode) {
+      window._AMapSecurityConfig = { securityJsCode }
+    }
 
     this.AMap = await AMapLoader.load({
       key,
