@@ -4,6 +4,7 @@ import router from './router'
 import { useAppStore } from './stores/app'
 import { installThemeDomSync } from './theme/syncThemeDom'
 import './style.css'
+import './studio.css'
 import App from './App.vue'
 
 const app = createApp(App)

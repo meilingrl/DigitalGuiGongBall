@@ -1,217 +1,59 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAppStore } from '../stores/app'
-import WavyLines from '../components/WavyLines.vue'
+import { useAuthStore } from '../stores/auth'
+import { errorMessage } from '../lib/api'
 import ThemeToggle from '../components/ThemeToggle.vue'
-import logoUrl from '../assets/materials/images/branding/brand-logo-primary-v1.0.png'
+import DesignPreview from '../components/DesignPreview.vue'
+import { defaultConfig } from '../../shared/design'
 
-const store = useAppStore()
+const auth = useAuthStore()
 const router = useRouter()
-
+const mode = ref<'login' | 'register'>('login')
 const username = ref('')
+const displayName = ref('')
 const password = ref('')
-const remember = ref(false)
 const submitting = ref(false)
-
-function onSubmit() {
+const error = ref('')
+async function submit() {
   submitting.value = true
-  window.setTimeout(() => {
-    submitting.value = false
-    router.push({ name: 'hub-dashboard' })
-  }, 400)
+  error.value = ''
+  try {
+    await auth.signIn(username.value, password.value, mode.value === 'register' ? displayName.value : undefined)
+    await router.push('/hub/workshop')
+  } catch (cause) { error.value = errorMessage(cause) }
+  finally { submitting.value = false }
 }
+function switchMode() { mode.value = mode.value === 'login' ? 'register' : 'login'; error.value = '' }
 </script>
 
 <template>
-  <div
-    class="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden p-6 sm:p-8"
-    :class="
-      store.theme === 'dark'
-        ? 'bg-slate-950 text-slate-100'
-        : 'bg-slate-100 text-slate-900'
-    "
-  >
-    <WavyLines />
-
+  <main class="studio-login">
     <ThemeToggle layout="fixed" />
-
-    <!-- 等宽双栏：竖向分隔线在卡片水平正中；窄屏纵向堆叠 -->
-    <div
-      class="relative z-10 mx-auto grid w-full max-w-[880px] min-h-[420px] grid-cols-1 overflow-hidden rounded-xl border shadow-xl backdrop-blur-sm md:grid-cols-2"
-      :class="
-        store.theme === 'dark'
-          ? 'border-slate-700/90 bg-slate-900/85 shadow-black/50'
-          : 'border-slate-200/90 bg-white/80 shadow-slate-900/10'
-      "
-    >
-      <!-- 左侧：品牌与 Logo（资源：src/assets/materials/images/branding/brand-logo-primary-v1.0.png） -->
-      <div
-        class="flex flex-col items-center justify-center px-8 py-10 text-center md:py-12"
-      >
-        <img
-          :src="logoUrl"
-          class="mb-5 h-[100px] w-[100px] shrink-0 object-contain transition"
-          :class="
-            store.theme === 'dark'
-              ? 'invert brightness-110'
-              : 'mix-blend-multiply'
-          "
-          :alt="
-            store.locale === 'zh'
-              ? '数字鬼工球标志'
-              : 'Digital Guigong Ball logo'
-          "
-        />
-        <h1 class="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
-          {{ store.locale === 'zh' ? '数字鬼工球' : 'Digital Guigong Ball' }}
-        </h1>
-        <p
-          class="mt-2 max-w-[260px] text-sm leading-relaxed"
-          :class="
-            store.theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
-          "
-        >
-          {{
-            store.locale === 'zh'
-              ? '岭南鬼工球技艺的数字化体验与传承'
-              : 'Digital experience and heritage of the Guigong ivory sphere craft'
-          }}
-        </p>
+    <section class="login-story">
+      <a href="/login" class="studio-wordmark"><span class="brand-seal">玲</span>数字鬼工球<span class="brand-en">DIGITAL GUIGONG</span></a>
+      <div class="login-art"><DesignPreview :config="{ ...defaultConfig, layers: 6 }" /><span class="art-annotation">层层相套 · 内外相通</span></div>
+      <p class="eyebrow">LINGNAN CRAFT · DIGITAL ATELIER</p>
+      <h1>方寸之间，<br />另有天地。</h1>
+      <p class="story-copy">从一重球壳到层层玲珑。以三维结构探索岭南工艺，留下属于你的数字作品。</p>
+      <p class="story-foot">非遗文化 × 参数化设计 × 持久创作</p>
+    </section>
+    <section class="login-form-panel">
+      <div class="login-form-inner">
+        <span class="eyebrow">YOUR PERSONAL ATELIER</span>
+        <h2>{{ mode === 'login' ? '回到你的工坊' : '开启第一件作品' }}</h2>
+        <p class="muted">{{ mode === 'login' ? '登录后继续创作，作品会保存在本地后端数据库。' : '创建本地账号，让每一次探索都有迹可循。' }}</p>
+        <div v-if="auth.error" class="notice error" role="alert">{{ auth.error }}<button class="text-button" @click="auth.restore(true)">重新连接</button></div>
+        <form class="studio-form" @submit.prevent="submit">
+          <label>用户名<input v-model="username" name="username" autocomplete="username" required pattern="[a-zA-Z0-9_]{3,32}" minlength="3" maxlength="32" placeholder="3–32 位字母、数字或下划线" /></label>
+          <label v-if="mode === 'register'">显示名称<input v-model="displayName" name="displayName" autocomplete="nickname" required maxlength="40" placeholder="作品中使用的名字" /></label>
+          <label>密码<input v-model="password" type="password" name="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" required minlength="8" maxlength="128" placeholder="至少 8 位字符" /></label>
+          <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+          <button class="primary-button full" type="submit" :disabled="submitting">{{ submitting ? '正在连接工坊…' : mode === 'login' ? '登录工坊 →' : '注册并进入工坊 →' }}</button>
+        </form>
+        <p class="switch-mode">{{ mode === 'login' ? '第一次来？' : '已有账号？' }}<button class="text-button" @click="switchMode">{{ mode === 'login' ? '创建账号' : '返回登录' }}</button></p>
+        <div class="local-note"><span class="status-dot" />本地全栈演示<p>无需外部服务。可使用已初始化的演示账号，也可以直接创建自己的账号。</p></div>
       </div>
-
-      <!-- 右侧：表单（与左栏等宽，内容在栏内水平居中） -->
-      <div
-        class="flex w-full flex-col items-center justify-center border-t px-8 py-10 md:border-l md:border-t-0 md:py-12"
-        :class="
-          store.theme === 'dark'
-            ? 'border-slate-700/80'
-            : 'border-slate-200/90'
-        "
-      >
-        <div class="w-full max-w-[320px]">
-          <h2 class="mb-6 text-xl font-semibold tracking-tight">
-            {{ store.locale === 'zh' ? '登录' : 'Sign in' }}
-          </h2>
-
-          <form class="space-y-5" @submit.prevent="onSubmit">
-            <div>
-              <label
-                for="login-username"
-                class="mb-1.5 block text-sm font-medium"
-                :class="
-                  store.theme === 'dark'
-                    ? 'text-slate-300'
-                    : 'text-slate-700'
-                "
-              >
-                {{ store.locale === 'zh' ? '用户名' : 'Username' }}
-              </label>
-              <input
-                id="login-username"
-                v-model="username"
-                type="text"
-                name="username"
-                autocomplete="username"
-                required
-                class="w-full rounded-xl border bg-white/90 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100"
-                :class="
-                  store.theme === 'dark'
-                    ? 'border-slate-600'
-                    : 'border-slate-200'
-                "
-                :placeholder="
-                  store.locale === 'zh' ? '请输入用户名' : 'Enter username'
-                "
-              />
-            </div>
-
-            <div>
-              <label
-                for="login-password"
-                class="mb-1.5 block text-sm font-medium"
-                :class="
-                  store.theme === 'dark'
-                    ? 'text-slate-300'
-                    : 'text-slate-700'
-                "
-              >
-                {{ store.locale === 'zh' ? '密码' : 'Password' }}
-              </label>
-              <input
-                id="login-password"
-                v-model="password"
-                type="password"
-                name="password"
-                autocomplete="current-password"
-                required
-                class="w-full rounded-xl border bg-white/90 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100"
-                :class="
-                  store.theme === 'dark'
-                    ? 'border-slate-600'
-                    : 'border-slate-200'
-                "
-                :placeholder="
-                  store.locale === 'zh' ? '请输入密码' : 'Enter password'
-                "
-              />
-            </div>
-
-            <div class="flex items-center justify-between gap-3 text-sm">
-              <label
-                class="flex cursor-pointer items-center gap-2"
-                :class="
-                  store.theme === 'dark'
-                    ? 'text-slate-400'
-                    : 'text-slate-600'
-                "
-              >
-                <input
-                  v-model="remember"
-                  type="checkbox"
-                  class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/30 dark:border-slate-600 dark:bg-slate-800"
-                />
-                {{ store.locale === 'zh' ? '记住我' : 'Remember me' }}
-              </label>
-              <button
-                type="button"
-                class="text-teal-700 hover:text-teal-800 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
-              >
-                {{ store.locale === 'zh' ? '忘记密码？' : 'Forgot password?' }}
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              :disabled="submitting"
-              class="flex w-full items-center justify-center rounded-xl bg-teal-600 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-teal-500 dark:hover:bg-teal-400"
-            >
-              {{
-                submitting
-                  ? store.locale === 'zh'
-                    ? '登录中…'
-                    : 'Signing in…'
-                  : store.locale === 'zh'
-                    ? '登录'
-                    : 'Sign in'
-              }}
-            </button>
-          </form>
-
-          <p
-            class="mt-6 text-center text-xs"
-            :class="
-              store.theme === 'dark' ? 'text-slate-500' : 'text-slate-500'
-            "
-          >
-            {{
-              store.locale === 'zh'
-                ? '演示：提交后进入工作台'
-                : 'Demo: submit opens the hub'
-            }}
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
+    </section>
+  </main>
 </template>

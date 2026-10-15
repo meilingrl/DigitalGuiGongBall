@@ -1,419 +1,151 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import AtelierScene from '../components/AtelierScene.vue'
-import ThemeToggle from '../components/ThemeToggle.vue'
+import { defaultConfigs, templates, type DesignConfig, type TemplateId, type Work } from '../../shared/design'
+import { api, ApiError, errorMessage } from '../lib/api'
+import { cloneDesign } from '../lib/draft'
 import { useAppStore } from '../stores/app'
+import ThemeToggle from '../components/ThemeToggle.vue'
 
-const store = useAppStore()
+const route = useRoute()
 const router = useRouter()
-const drawerOpen = ref(true)
-const uiVisible = ref(true)
-const autoRotate = ref(true)
-const FLAGSHIP_LAYER_COUNT = 6
-let healthTimer = 0
-let collabTimer = 0
+const app = useAppStore()
+const scene = ref<InstanceType<typeof AtelierScene> | null>(null)
+const config = ref<DesignConfig>(cloneDesign(defaultConfigs.linglong))
+const title = ref('')
+const description = ref('')
+const work = ref<Work | null>(null)
+const loading = ref(false)
+const loadError = ref('')
+const saveError = ref('')
+const saveState = ref<'idle' | 'saving' | 'saved'>('idle')
+const ready = ref(false)
+const sceneError = ref('')
+const controlsOpen = ref(true)
+const baseline = ref('')
+const isNew = computed(() => !work.value)
+const snapshot = computed(() => JSON.stringify({ title: title.value, description: description.value, config: config.value }))
+const dirty = computed(() => !loading.value && !loadError.value && snapshot.value !== baseline.value)
+const template = computed(() => templates.find(item => item.id === config.value.templateId) ?? templates[0])
+const conflict = ref(false)
+const expired = ref(false)
+let allowNavigation = false
+let loadSequence = 0
 
-const IDLE_MS = 4000
-let idleTimer: ReturnType<typeof setTimeout> | null = null
+async function load() {
+  const sequence = ++loadSequence
+  loading.value = true; loadError.value = ''; saveError.value = ''; ready.value = false; sceneError.value = ''
+  saveState.value = 'idle'; conflict.value = false; expired.value = false
+  try {
+    if (route.params.id) {
+      const result = await api<{ work: Work }>(`/api/works/${encodeURIComponent(String(route.params.id))}`)
+      if (sequence !== loadSequence) return
+      work.value = result.work
+      title.value = result.work.title
+      description.value = result.work.description
+      config.value = cloneDesign(result.work.config)
+    } else {
+      const id = String(route.query.template ?? 'linglong') as TemplateId
+      const chosen = templates.find(item => item.id === id) ?? templates[0]
+      work.value = null
+      title.value = `${chosen.name} · 我的创作`
+      description.value = ''
+      config.value = cloneDesign(chosen.config)
+    }
+    baseline.value = snapshot.value
+  } catch (cause) {
+    if (sequence === loadSequence) loadError.value = errorMessage(cause)
+  } finally { if (sequence === loadSequence) loading.value = false }
+}
 
-type CarvingToolId = 'sculpt' | 'relief' | 'perforate' | 'polish' | 'texture'
-
-const carvingToolIds: CarvingToolId[] = ['sculpt', 'relief', 'perforate', 'polish', 'texture']
-
-function carvingToolLabel(id: CarvingToolId): string {
-  const t = store.t
-  switch (id) {
-    case 'sculpt':
-      return t.toolSculpt
-    case 'relief':
-      return t.toolRelief
-    case 'perforate':
-      return t.toolPerforate
-    case 'polish':
-      return t.toolPolish
-    case 'texture':
-      return t.toolTexture
+async function save() {
+  if (loading.value || saveState.value === 'saving' || !title.value.trim()) return
+  const sequence = loadSequence
+  const creating = work.value === null
+  saveError.value = ''; conflict.value = false; expired.value = false; saveState.value = 'saving'
+  const submitted = snapshot.value
+  try {
+    const body = { title: title.value.trim(), description: description.value.trim(), config: cloneDesign(config.value) }
+    const result = await api<{ work: Work }>(work.value ? `/api/works/${work.value.id}` : '/api/works', {
+      method: work.value ? 'PUT' : 'POST', body: { ...body, ...(work.value ? { version: work.value.version } : {}) },
+    })
+    // A response belongs to the editor that submitted it. Leaving or explicitly
+    // reopening the work invalidates that editor even if the database write finishes.
+    if (sequence !== loadSequence) return
+    work.value = result.work
+    // Inputs remain editable during a request. Only mark the submitted version clean.
+    baseline.value = submitted
+    if (snapshot.value === submitted) {
+      title.value = result.work.title; description.value = result.work.description
+      baseline.value = snapshot.value
+    }
+    saveState.value = 'saved'
+    if (creating) {
+      allowNavigation = true
+      await router.replace(`/atelier/${result.work.id}`)
+      allowNavigation = false
+    }
+  } catch (cause) {
+    if (sequence !== loadSequence) return
+    saveState.value = 'idle'; saveError.value = errorMessage(cause)
+    conflict.value = cause instanceof ApiError && cause.status === 409
+    expired.value = cause instanceof ApiError && cause.status === 401
   }
 }
 
-const templateName = computed(() =>
-  store.locale === 'zh' ? store.selectedTemplate.nameZh : store.selectedTemplate.nameEn,
-)
-
-const effectiveMaxLayers = computed(() => Math.min(store.maxLayers, FLAGSHIP_LAYER_COUNT))
-
-const collaboratorPreviewLayer = computed(
-  () => ((store.collaboratorLayer - 1) % effectiveMaxLayers.value) + 1,
-)
-
-const riskClass = computed(() =>
-  store.riskLevel === 'warning' ? 'shadow-[inset_0_0_0_4px_rgba(239,68,68,0.45)]' : '',
-)
-
-const shellClass = computed(() =>
-  store.theme === 'light'
-    ? 'bg-slate-100 text-slate-900'
-    : 'bg-[#020817] text-white',
-)
-
-const exportText = computed(() => {
-  if (store.exportState === 'pending') return store.t.exportPending
-  if (store.exportState === 'done') return store.t.exportDone
-  return store.t.export
-})
-
-const dockClass = computed(() =>
-  store.theme === 'light'
-    ? 'border border-slate-200/90 bg-white/92 text-slate-800 shadow-[0_10px_40px_rgba(15,23,42,0.08)]'
-    : 'border border-white/12 bg-slate-950/88 text-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.45)]',
-)
-
-const toolBtnClass = (id: CarvingToolId) => {
-  const active = store.carvingTool === id
-  if (store.theme === 'light') {
-    return active
-      ? 'bg-teal-50 text-teal-900 ring-2 ring-teal-500/70 shadow-sm'
-      : 'text-slate-600 hover:bg-slate-100/90'
-  }
-  return active
-    ? 'bg-teal-950/80 text-teal-100 ring-2 ring-teal-400/50 shadow-sm'
-    : 'text-slate-300 hover:bg-white/10'
+function reloadWork() {
+  if (!dirty.value || window.confirm('重新打开会舍弃尚未保存的修改，继续吗？')) void load()
 }
-
-function resetIdleTimer() {
-  uiVisible.value = true
-  if (idleTimer !== null) {
-    clearTimeout(idleTimer)
-    idleTimer = null
-  }
-  idleTimer = window.setTimeout(() => {
-    uiVisible.value = false
-    idleTimer = null
-  }, IDLE_MS)
+function downloadConfig() {
+  const blob = new Blob([JSON.stringify({ title: title.value, description: description.value, config: config.value }, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url; anchor.download = 'guigong-design.json'; anchor.click(); URL.revokeObjectURL(url)
 }
-
-function backToHub() {
-  router.push({ name: 'hub-workshop' })
+function capture() {
+  const data = scene.value?.exportImage()
+  if (!data) { sceneError.value = '当前无法导出画面，请等待三维加载完成后重试'; return }
+  const anchor = document.createElement('a'); anchor.href = data; anchor.download = 'guigong-preview.png'; anchor.click()
 }
-
-function onIdleActivity() {
-  resetIdleTimer()
-}
-
-const wheelOpts: AddEventListenerOptions = { passive: true }
-
-onMounted(() => {
-  store.setLayerDepth(Math.min(store.layerDepth, effectiveMaxLayers.value))
-  resetIdleTimer()
-
-  window.addEventListener('mousemove', onIdleActivity)
-  window.addEventListener('mousedown', onIdleActivity)
-  window.addEventListener('wheel', onIdleActivity, wheelOpts)
-  window.addEventListener('touchstart', onIdleActivity, wheelOpts)
-
-  healthTimer = window.setInterval(() => {
-    store.triggerHealthTip()
-  }, 90000)
-
-  collabTimer = window.setInterval(() => {
-    store.tickCollaborator()
-  }, 6000)
-})
-
-onBeforeUnmount(() => {
-  if (idleTimer !== null) clearTimeout(idleTimer)
-  window.removeEventListener('mousemove', onIdleActivity)
-  window.removeEventListener('mousedown', onIdleActivity)
-  window.removeEventListener('wheel', onIdleActivity, wheelOpts)
-  window.removeEventListener('touchstart', onIdleActivity, wheelOpts)
-  window.clearInterval(healthTimer)
-  window.clearInterval(collabTimer)
-})
+function warnUnload(event: BeforeUnloadEvent) { if (dirty.value) { event.preventDefault(); event.returnValue = '' } }
+function shortcut(event: KeyboardEvent) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save() } }
+window.addEventListener('beforeunload', warnUnload)
+window.addEventListener('keydown', shortcut)
+onBeforeUnmount(() => { loadSequence++; window.removeEventListener('beforeunload', warnUnload); window.removeEventListener('keydown', shortcut) })
+onBeforeRouteLeave(() => allowNavigation || !dirty.value || window.confirm('作品有尚未保存的修改，确定离开吗？'))
+watch(() => String(route.params.id ?? '') + String(route.query.template ?? ''), (_next, previous) => {
+  // After first save the address receives its persistent id; retain any edits made while saving.
+  if (previous !== undefined && work.value?.id === route.params.id && allowNavigation) return
+  void load()
+}, { immediate: true })
+watch(config, () => { if (saveState.value === 'saved') saveState.value = 'idle' }, { deep: true })
+watch(() => config.value.layers, layers => { if (config.value.activeLayer > layers) config.value.activeLayer = 0 })
 </script>
 
 <template>
-  <main class="relative min-h-[100dvh] overflow-hidden" :class="[shellClass, riskClass]">
-    <Transition
-      enter-active-class="transition-all duration-500 ease-out"
-      enter-from-class="-translate-y-full opacity-0"
-      enter-to-class="translate-y-0 opacity-100"
-      leave-active-class="transition-all duration-500 ease-out"
-      leave-from-class="translate-y-0 opacity-100"
-      leave-to-class="-translate-y-full opacity-0"
-    >
-      <div
-        v-show="uiVisible"
-        class="pointer-events-auto absolute left-4 right-4 z-30 flex items-center justify-between gap-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:left-6 sm:right-6 sm:top-5"
-      >
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="rounded-full border px-4 py-2 text-sm backdrop-blur-sm transition"
-            :class="
-              store.theme === 'light'
-                ? 'border-slate-300 bg-white/80 text-slate-800 hover:bg-white'
-                : 'border-white/30 bg-white/5 text-slate-100 hover:bg-white/15'
-            "
-            @click="backToHub"
-          >
-            {{ store.t.backHub }}
-          </button>
-
-          <!-- Auto-rotate toggle -->
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded-full border px-3 py-2 text-sm backdrop-blur-sm transition"
-            :class="
-              autoRotate
-                ? store.theme === 'light'
-                  ? 'border-teal-400/70 bg-teal-50/90 text-teal-800 hover:bg-teal-100/90'
-                  : 'border-teal-400/50 bg-teal-900/40 text-teal-200 hover:bg-teal-800/50'
-                : store.theme === 'light'
-                  ? 'border-slate-300 bg-white/80 text-slate-500 hover:bg-white'
-                  : 'border-white/30 bg-white/5 text-slate-400 hover:bg-white/15'
-            "
-            :title="autoRotate ? '停止旋转' : '自动旋转'"
-            @click="autoRotate = !autoRotate; resetIdleTimer()"
-          >
-            <svg
-              class="h-4 w-4 transition-transform"
-              :class="autoRotate ? 'animate-spin-slow' : ''"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path d="M21 12a9 9 0 1 1-9-9" stroke-linecap="round" />
-              <polyline points="21 3 21 9 15 9" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <span class="hidden sm:inline">{{ autoRotate ? '旋转中' : '已暂停' }}</span>
-          </button>
+  <main class="atelier-shell">
+    <header class="atelier-header"><RouterLink class="atelier-back" to="/hub/works">← <span>我的作品</span></RouterLink><div class="atelier-document"><span class="eyebrow">DIGITAL ATELIER</span><strong>{{ title || '未命名作品' }}</strong></div><span class="save-indicator" aria-live="polite">{{ loading ? '读取中' : saveState === 'saving' ? '正在保存…' : dirty ? '有未保存修改' : work ? `已保存 · v${work.version}` : '新作品' }}</span><ThemeToggle layout="inline" size="sm" /><button class="primary-button save-button" :disabled="loading || !!loadError || saveState === 'saving' || !title.trim()" @click="save">{{ saveState === 'saving' ? '保存中…' : '保存作品' }}</button></header>
+    <div v-if="loading" class="atelier-loading" role="status">正在从数据库恢复作品…</div>
+    <div v-else-if="loadError" class="atelier-loading"><p class="notice error" role="alert">{{ loadError }}</p><button class="secondary-button" @click="load">重试读取</button><RouterLink class="text-button" to="/hub/works">返回作品列表</RouterLink></div>
+    <div v-else class="atelier-body">
+      <section class="atelier-stage" aria-label="三维创作视图">
+        <AtelierScene ref="scene" :config="config" :theme="app.theme" @ready="ready = true; sceneError = ''" @error="ready = false; sceneError = $event" />
+        <div class="stage-label"><span class="eyebrow">{{ template.subtitle }}</span><h1>{{ template.name }}</h1><p>{{ config.layers }} 重套球 / {{ config.activeLayer ? `聚焦第 ${config.activeLayer} 层` : '完整结构' }}</p></div>
+        <div v-if="!ready && !sceneError" class="stage-status" role="status">正在构建镂空结构…</div>
+        <div v-if="sceneError" class="stage-status notice error" role="alert">{{ sceneError }}<button class="text-button" @click="reloadWork">重新加载场景</button></div>
+        <div class="stage-toolbar"><button class="secondary-button" @click="config.autoRotate = !config.autoRotate" :aria-pressed="config.autoRotate">{{ config.autoRotate ? 'Ⅱ 暂停旋转' : '↻ 自动旋转' }}</button><button class="secondary-button" @click="scene?.resetView()">重置视角</button><button class="secondary-button" :disabled="!ready" @click="capture">导出画面</button></div>
+        <p class="stage-hint">拖动旋转 · 滚轮或双指缩放<span>原创数字镂空结构 · 非加工模型</span></p>
+      </section>
+      <aside class="atelier-controls">
+        <button class="controls-toggle" @click="controlsOpen = !controlsOpen" :aria-expanded="controlsOpen">作品参数 <span>{{ controlsOpen ? '−' : '＋' }}</span></button>
+        <div v-show="controlsOpen" class="controls-content">
+          <section class="control-section"><div class="control-heading"><span>01</span><h2>结构与纹样</h2></div><label class="control-label">嵌套层数 <output>{{ config.layers }} 层</output><input v-model.number="config.layers" aria-label="嵌套层数" type="range" min="2" max="6" step="1" /></label><label class="control-label">纹样密度 <output>{{ config.patternScale }}</output><input v-model.number="config.patternScale" aria-label="纹样密度" type="range" min="8" max="24" step="1" /></label><label class="control-label">开孔尺度 <output>{{ Math.round(config.aperture * 100) }}%</output><input v-model.number="config.aperture" aria-label="开孔尺度" type="range" min=".35" max=".8" step=".01" /></label></section>
+          <section class="control-section"><div class="control-heading"><span>02</span><h2>观察内部</h2></div><label class="control-label">分层展开 <output>{{ Math.round(config.separation * 100) }}%</output><input v-model.number="config.separation" aria-label="分层展开" type="range" min="0" max="1" step=".01" /></label><label class="switch-label"><span>剖视结构<small>切去部分球壳，观察套叠关系</small></span><input v-model="config.cutaway" type="checkbox" aria-label="剖视结构" /></label><label class="control-label">聚焦图层<select v-model.number="config.activeLayer" aria-label="聚焦图层"><option :value="0">查看全部图层</option><option v-for="layer in config.layers" :key="layer" :value="layer">第 {{ layer }} 层{{ layer === 1 ? '（最外层）' : '' }}</option></select></label></section>
+          <section class="control-section"><div class="control-heading"><span>03</span><h2>材质与光泽</h2></div><div class="material-options"><button v-for="material in (['ivory', 'jade', 'bronze'] as const)" :key="material" class="material-choice" :class="{ selected: config.material === material }" :aria-pressed="config.material === material" @click="config.material = material"><span :class="`material-swatch ${material}`" />{{ material === 'ivory' ? '暖瓷' : material === 'jade' ? '青玉' : '古铜' }}</button></div></section>
+          <section class="control-section"><div class="control-heading"><span>04</span><h2>为作品留个名字</h2></div><label class="control-label">作品名称<input v-model="title" type="text" maxlength="80" required aria-label="作品名称" /></label><label class="control-label">创作说明<textarea v-model="description" maxlength="1000" rows="3" placeholder="记录你的纹样与结构构思…" aria-label="创作说明" /></label><p v-if="saveError" class="notice error" role="alert">{{ saveError }}<button v-if="conflict" class="text-button" @click="reloadWork">读取最新版本</button><RouterLink v-if="expired" class="text-button" to="/login">重新登录</RouterLink><button v-else-if="!conflict" class="text-button" @click="save">重试保存</button></p><p v-if="saveState === 'saved' && !dirty" class="notice success" role="status">已写入数据库，可以从「我的作品」重新打开。</p><button class="text-button config-download" @click="downloadConfig">↓ 下载当前配置 JSON</button><p class="control-foot">{{ isNew ? '首次保存会创建一件独立作品。' : '继续保存将更新当前作品。' }}视角可自由探索，结构、材质与观察参数会随作品保存。</p></section>
         </div>
-        <p
-          class="hidden max-w-[45%] truncate rounded-full border px-3 py-1 text-xs sm:block"
-          :class="store.theme === 'light' ? 'border-slate-200 bg-white/70 text-slate-700' : 'border-white/20 text-cyan-200'"
-        >
-          {{ templateName }}
-        </p>
-      </div>
-    </Transition>
-
-    <section class="absolute inset-0">
-      <AtelierScene :layer-depth="store.layerDepth" :max-layers="effectiveMaxLayers" :theme="store.theme" :auto-rotate="autoRotate" />
-    </section>
-
-    <section class="pointer-events-none absolute inset-0 z-20">
-      <div
-        v-if="store.healthTipVisible"
-        class="pointer-events-auto absolute left-1/2 top-16 z-30 -translate-x-1/2 rounded-xl border border-amber-200/60 bg-amber-50/95 px-4 py-2 text-sm text-amber-900 shadow-soft"
-      >
-        {{ store.t.healthyReminder }}
-      </div>
-
-      <!-- Left: tablet-style vertical tool rail -->
-      <Transition
-        enter-active-class="transition-all duration-500 ease-out"
-        enter-from-class="-translate-x-full opacity-0"
-        enter-to-class="translate-x-0 opacity-100"
-        leave-active-class="transition-all duration-500 ease-out"
-        leave-from-class="translate-x-0 opacity-100"
-        leave-to-class="-translate-x-full opacity-0"
-      >
-        <div
-          v-show="uiVisible"
-          class="pointer-events-auto absolute left-3 top-1/2 z-30 flex max-h-[min(72vh,32rem)] w-[3.25rem] -translate-y-1/2 flex-col sm:left-5 sm:w-[3.5rem]"
-        >
-          <div
-            class="flex flex-col gap-1 rounded-2xl p-1.5 backdrop-blur-md"
-            :class="dockClass"
-          >
-            <p
-              class="mb-0.5 px-0.5 text-center text-[0.6rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400"
-            >
-              {{ store.t.atelierTools }}
-            </p>
-            <button
-              v-for="id in carvingToolIds"
-              :key="id"
-              type="button"
-              class="flex h-11 w-full flex-col items-center justify-center rounded-xl text-[0.65rem] font-medium leading-tight transition-all duration-200 sm:h-12 sm:text-[0.7rem]"
-              :class="toolBtnClass(id)"
-              :aria-pressed="store.carvingTool === id"
-              @click="
-                store.setCarvingTool(id);
-                resetIdleTimer()
-              "
-            >
-              <!-- inline icons: note-app style -->
-              <span class="mb-0.5 flex h-5 w-5 items-center justify-center" aria-hidden="true">
-                <svg v-if="id === 'sculpt'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <circle cx="12" cy="12" r="6.5" />
-                  <path d="M12 5.5v13" />
-                </svg>
-                <svg v-else-if="id === 'relief'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M4 18h16M4 14l4-6 4 4 4-8 4 6" />
-                </svg>
-                <svg v-else-if="id === 'perforate'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <circle cx="12" cy="12" r="8.5" />
-                  <circle cx="12" cy="12" r="3.2" />
-                </svg>
-                <svg v-else-if="id === 'polish'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M12 3l1.8 5.5h5.7l-4.6 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.6-3.4h5.7z" />
-                </svg>
-                <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M4 8h16M4 12h16M4 16h16" />
-                  <path d="M8 4v16M16 4v16" opacity="0.35" />
-                </svg>
-              </span>
-              <span class="max-w-[2.6rem] text-center leading-none">{{ carvingToolLabel(id) }}</span>
-            </button>
-
-            <div
-              class="mt-1 border-t pt-2"
-              :class="store.theme === 'light' ? 'border-slate-200/80' : 'border-white/10'"
-            >
-              <label class="mb-1 block text-center text-[0.6rem] text-slate-500 dark:text-slate-400">{{ store.t.toolPressure }}</label>
-              <input
-                class="h-2 w-full cursor-pointer accent-teal-600"
-                type="range"
-                min="0"
-                max="100"
-                :value="store.carvingPressure"
-                @input="
-                  store.setCarvingPressure(Number(($event.target as HTMLInputElement).value));
-                  resetIdleTimer()
-                "
-              />
-            </div>
-          </div>
-        </div>
-      </Transition>
-
-      <Transition
-        enter-active-class="transition-all duration-500 ease-out"
-        enter-from-class="translate-y-full opacity-0"
-        enter-to-class="translate-y-0 opacity-100"
-        leave-active-class="transition-all duration-500 ease-out"
-        leave-from-class="translate-y-0 opacity-100"
-        leave-to-class="translate-y-full opacity-0"
-      >
-        <div
-          v-show="uiVisible"
-          class="pointer-events-auto absolute bottom-0 left-1/2 z-30 flex w-[min(92vw,26rem)] max-w-full -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 px-4 py-3 backdrop-blur-md sm:bottom-2 sm:rounded-2xl sm:border-b"
-          :class="
-            store.theme === 'light'
-              ? 'border-slate-200/90 bg-white/90 text-slate-800 shadow-[0_-8px_32px_rgba(15,23,42,0.06)] sm:shadow-lg'
-              : 'border-white/15 bg-black/45 text-slate-100 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] sm:shadow-xl'
-          "
-          style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))"
-        >
-          <label class="shrink-0 text-xs text-slate-600 dark:text-slate-200">{{ store.t.layerDepth }}</label>
-          <input
-            class="min-w-0 flex-1 accent-teal-600"
-            type="range"
-            min="1"
-            :max="effectiveMaxLayers"
-            :value="store.layerDepth"
-            @input="
-              store.setLayerDepth(Number(($event.target as HTMLInputElement).value));
-              resetIdleTimer()
-            "
-          />
-          <span class="shrink-0 text-xs tabular-nums text-slate-600 dark:text-slate-300"
-            >{{ store.layerDepth }}/{{ effectiveMaxLayers }}</span
-          >
-        </div>
-      </Transition>
-
-      <!-- Right bottom: session card (clears PIP at top-right) -->
-      <Transition
-        enter-active-class="transition-all duration-500 ease-out"
-        enter-from-class="translate-x-full opacity-0"
-        enter-to-class="translate-x-0 opacity-100"
-        leave-active-class="transition-all duration-500 ease-out"
-        leave-from-class="translate-x-0 opacity-100"
-        leave-to-class="translate-x-full opacity-0"
-      >
-        <aside
-          v-show="uiVisible"
-          class="pointer-events-auto absolute right-3 z-30 w-[min(18rem,88vw)] rounded-2xl border p-3 backdrop-blur-md sm:right-5 sm:w-72"
-          style="bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))"
-          :class="
-            store.theme === 'light'
-              ? 'border-slate-200/90 bg-white/92 text-slate-900 shadow-lg'
-              : 'border-white/12 bg-slate-950/85 text-white shadow-xl'
-          "
-        >
-          <button
-            class="mb-2 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm font-medium transition"
-            :class="
-              store.theme === 'light'
-                ? 'border-slate-200 hover:bg-slate-50'
-                : 'border-white/15 hover:bg-white/10'
-            "
-            type="button"
-            @click="drawerOpen = !drawerOpen"
-          >
-            <span>{{ store.t.toolDetails }}</span>
-            <span class="text-xs text-slate-400 transition-transform" :class="drawerOpen ? 'rotate-180' : ''">▾</span>
-          </button>
-          <Transition
-            enter-active-class="transition-all duration-500 ease-out"
-            enter-from-class="max-h-0 opacity-0 -translate-y-1"
-            enter-to-class="max-h-[32rem] opacity-100 translate-y-0"
-            leave-active-class="transition-all duration-500 ease-out"
-            leave-from-class="max-h-[32rem] opacity-100 translate-y-0"
-            leave-to-class="max-h-0 opacity-0 -translate-y-1"
-          >
-            <div v-if="drawerOpen" class="space-y-2 overflow-hidden text-sm">
-              <p class="rounded-lg px-2 py-1.5 text-[0.7rem] leading-snug" :class="store.theme === 'light' ? 'bg-amber-50 text-amber-900' : 'bg-amber-950/40 text-amber-100/90'">
-                {{ store.t.atelierToolHint }}
-              </p>
-              <button
-                class="w-full rounded-xl border px-3 py-2.5 text-left font-medium transition"
-                :class="
-                  store.theme === 'light'
-                    ? 'border-slate-200 hover:bg-slate-50'
-                    : 'border-white/15 hover:bg-white/10'
-                "
-                type="button"
-                :disabled="store.exportState === 'pending'"
-                @click="store.triggerExport"
-              >
-                {{ exportText }}
-              </button>
-              <p
-                class="rounded-lg px-3 py-2 text-xs"
-                :class="store.theme === 'light' ? 'bg-slate-100 text-slate-700' : 'bg-white/5 text-slate-200'"
-              >
-                {{ store.t.collab }}: {{ store.t.collaborator }} L{{ collaboratorPreviewLayer }}
-              </p>
-              <p class="rounded-lg bg-white/5 px-3 py-2 text-xs">
-                {{ store.t.risk }}:
-                <span
-                  :class="
-                    store.riskLevel === 'warning'
-                      ? store.theme === 'light'
-                        ? 'text-red-600'
-                        : 'text-red-300'
-                      : store.theme === 'light'
-                        ? 'text-emerald-700'
-                        : 'text-emerald-300'
-                  "
-                >
-                  {{ store.riskLevel === 'warning' ? store.t.warning : store.t.safe }}
-                </span>
-              </p>
-              <p class="rounded-lg px-3 py-2 text-xs" :class="store.theme === 'light' ? 'bg-slate-100 text-teal-800' : 'text-cyan-200'">
-                {{ store.t.pip }}
-              </p>
-            </div>
-          </Transition>
-        </aside>
-      </Transition>
-    </section>
-
-    <ThemeToggle />
+      </aside>
+    </div>
   </main>
 </template>
