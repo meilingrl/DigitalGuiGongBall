@@ -1,0 +1,60 @@
+import { mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+
+export function openDatabase(filename: string): DatabaseSync {
+  if (filename !== ':memory:') mkdirSync(dirname(resolve(filename)), { recursive: true, mode: 0o700 })
+  const db = new DatabaseSync(filename)
+  try {
+    db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      );
+    `)
+    const migrated = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').get()
+    if (!migrated) {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        db.exec(`
+          CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            display_name TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          );
+          CREATE TABLE sessions (
+            token_hash TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+          );
+          CREATE INDEX sessions_user_idx ON sessions(user_id);
+          CREATE INDEX sessions_expiry_idx ON sessions(expires_at);
+          CREATE TABLE works (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 80),
+            description TEXT NOT NULL CHECK(length(description) <= 1000),
+            config_json TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX works_owner_updated_idx ON works(owner_id, updated_at DESC);
+        `)
+        db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)').run(new Date().toISOString())
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }
+    return db
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}

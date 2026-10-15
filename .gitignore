@@ -2,11 +2,22 @@
 node_modules
 dist
 dist-ssr
+dist-server
 *.local
 
 # Environment & secrets
 .env
 .env.*
+!.env.example
+
+# Local database and SQLite journals
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
 
 # Logs
 logs
