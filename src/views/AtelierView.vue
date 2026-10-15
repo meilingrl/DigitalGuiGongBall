@@ -5,6 +5,7 @@ import AtelierScene from '../components/AtelierScene.vue'
 import { defaultConfigs, templates, type DesignConfig, type TemplateId, type Work } from '../../shared/design'
 import { api, ApiError, errorMessage } from '../lib/api'
 import { cloneDesign } from '../lib/draft'
+import { downloadBlob, imageDataUrlToBlob } from '../lib/download'
 import { useAppStore } from '../stores/app'
 import ThemeToggle from '../components/ThemeToggle.vue'
 
@@ -99,14 +100,12 @@ function reloadWork() {
 }
 function downloadConfig() {
   const blob = new Blob([JSON.stringify({ title: title.value, description: description.value, config: config.value }, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url; anchor.download = 'guigong-design.json'; anchor.click(); URL.revokeObjectURL(url)
+  downloadBlob(blob, 'guigong-design.json')
 }
 function capture() {
   const data = scene.value?.exportImage()
   if (!data) { sceneError.value = '当前无法导出画面，请等待三维加载完成后重试'; return }
-  const anchor = document.createElement('a'); anchor.href = data; anchor.download = 'guigong-preview.png'; anchor.click()
+  downloadBlob(imageDataUrlToBlob(data), 'guigong-preview.png')
 }
 function warnUnload(event: BeforeUnloadEvent) { if (dirty.value) { event.preventDefault(); event.returnValue = '' } }
 function shortcut(event: KeyboardEvent) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save() } }
