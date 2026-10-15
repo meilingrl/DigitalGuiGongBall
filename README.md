@@ -1,196 +1,118 @@
-# 数字鬼工球 · 非遗文化互联平台
+# 数字鬼工球 · Digital Guigong Ball
 
-Vue 3 + TypeScript 前端：Hub 多业务页、高德地图探索、三维工坊（Three.js）、积分与主题等。设计说明见 `docs/`。
+以岭南鬼工球文化为背景的三维创作工坊。由课程前端原型升级为本地可运行的全栈作品：**注册/登录 → 选择模板 → 调整三维结构 → 保存到 SQLite → 列表检索 → 重新打开并继续修改**。
 
----
+![三维工坊](docs/screenshots/atelier-desktop.jpg)
 
-## 技术栈
+## 现在可以做什么
 
+- 三种原创参数化纹样、2–6 层独立嵌套球壳；真实几何镂空，支持密度、开孔尺度、暖瓷/青玉/古铜材质、展开、剖视和图层聚焦。
+- 鼠标或触摸旋转、缩放；PNG 画面与 JSON 配置下载。配置保存后可复现结构，暂不保存自由相机视角。
+- 真实账号、服务端会话与个人作品；标题/说明搜索、版本冲突保护。刷新、退出重登、后端重启后仍可读取。
+- 原课程文化展馆与原型功能保留，导航中明确区分真实创作与模拟业务。
 
-| 类别  | 选型                                   |
-| --- | ------------------------------------ |
-| 框架  | Vue 3（`<script setup>`）              |
-| 语言  | TypeScript                           |
-| 构建  | Vite 8                               |
-| 样式  | Tailwind CSS v3                      |
-| 状态  | Pinia                                |
-| 路由  | Vue Router                           |
-| 地图  | 高德 JS API（`@amap/amap-jsapi-loader`） |
-| 3D  | Three.js                             |
-| 工具  | VueUse 等                             |
+这是数字观赏与结构探索系统，纹样是原创数字风格化表达，不是传统实物的精确复原或加工级雕刻。没有使用真实象牙材料。
 
+## 运行（推荐演示方式）
 
----
-
-## 环境要求
-
-- **Node.js**：建议 20 LTS 或更高。
-- **包管理**：npm（仓库含 `package-lock.json`）。
-
----
-
-## 快速开始
+需要 **Node.js ≥22.13**、npm 和支持 WebGL 的现代浏览器。已验证 Node 22.13.1 与本地 Node 26.4；Node 22 的内置 SQLite 可能输出实验性 API 提示。无需云账号、外部密钥或付费服务。
 
 ```bash
-npm install
+git clone https://github.com/meilingrl/DigitalGuiGongBall.git
+cd DigitalGuiGongBall
+git switch upgrade/fullstack-atelier-20261016
+npm ci
+npm run db:init
+npm run db:seed
+npm run build:all
+npm start
 ```
 
-在项目根目录创建 `.env`（勿将含真实 Key 的 `.env` 提交到远程）：
+打开 **http://127.0.0.1:3001**。`npm start` 同时提供前端静态文件和 `/api`；从仓库根目录执行。用 `Ctrl+C` 停止。
 
-```env
-VITE_AMAP_KEY=你的高德_Web端_JS_API_Key
-```
+- `db:init` 可重复执行，普通启动也会初始化空库，不创建账号。
+- `db:seed` 显式创建公开本地体验账号 **`demo` / `Guigong2026!`** 及两件示范作品。也可直接在页面注册。
+- 重复种子操作不会覆盖已修改作品或已有账号密码；若 `demo` 原已存在，终端会提示沿用原密码。
+- 数据默认在 `data/guigong.sqlite`，已被 Git 忽略。此文件与 `.env` 不应提交；切换数据库路径会得到另一套账号和作品。
 
-在 [高德开放平台](https://lbs.amap.com/) 申请 **Web 端（JS API）** Key。修改 `.env` 后需重启开发服务器。
+开发时开两个终端，分别执行：
 
 ```bash
-npm run dev      # 默认 http://localhost:5173，/ 会重定向到 /login；进入 Hub 后为 /hub/dashboard
-npm run build    # 类型检查 + 生产构建
-npm run preview  # 预览构建产物
+npm run dev:api  # 后端 http://127.0.0.1:3001
+npm run dev     # 前端 http://127.0.0.1:5173，/api 代理到后端
 ```
 
----
+开发与演示都使用同一个默认数据库。若 5173 被占用，应释放端口后重试，或同时设置 Vite 端口和允许的 Origin；不要忽略服务地址变化。
 
-## 仓库目录结构
+## 配置
 
-```
-digital-guigong-ball/
-├── docs/                          # 设计文档（地图、自适应、功能规划等）
-│   ├── README.md                  # 文档索引
-│   ├── MAP_SYSTEM_DESIGN.md
-│   ├── ADAPTIVE_ARCHITECTURE.md
-│   ├── FEATURE_DESIGN_NEW_MODULES.md
-│   ├── DEFENSE_REPORT_KEYPOINTS.md
-│   ├── TEAM_WORKPLAN.md
-│   ├── NEXT_ITERATION_BACKLOG.md  # 下一轮需求对齐与 backlog
-│   ├── ASSET_IMAGE_PROMPTS.md     # 生图 prompt 备忘（博物馆 / 探索 / 商城）
-│   └── VideoCard-design.md
-├── tools/                         # 本地工具脚本（如 Blender 程序化生成模型）
-│   └── blender/
-├── public/                        # 站点静态资源（favicon、icons、`materials/` 下按模块组织的图片与视频等）
-├── index.html                     # HTML 入口
-├── package.json
-├── package-lock.json
-├── vite.config.ts                 # Vite 配置
-├── postcss.config.js
-├── tailwind.config.js
-├── tsconfig.json                  # TypeScript 工程配置
-├── tsconfig.app.json
-├── tsconfig.node.json
-└── src/
-    ├── main.ts                    # 应用入口
-    ├── App.vue
-    ├── style.css                  # 全局样式
-    ├── assets/                    # 随构建打包的静态资源
-    │   └── materials/             # 素材规范与元数据，见 ASSET_SPEC.md
-    ├── utils/
-    │   └── publicUrl.ts          # public 资源 URL（支持 Vite BASE_URL）
-    ├── components/               # 通用组件
-    │   ├── AtelierScene.vue      # 三维场景封装
-    │   ├── VideoCard.vue
-    │   ├── WavyLines.vue
-    │   ├── HubSidebarDock.vue
-    │   ├── HubBottomBar.vue
-    │   ├── TemplateCard.vue
-    │   ├── ThemeToggle.vue
-    │   ├── quiz/                 # 答题相关子组件
-    │   └── chat/                 # 社交会话相关子组件
-    ├── composables/             # 组合式函数
-    │   └── usePointerType.ts
-    ├── data/                    # 展示用数据与文案
-    │   ├── content.ts
-    │   ├── explore.ts
-    │   ├── mall.ts
-    │   ├── museum.ts
-    │   ├── social.ts
-    │   └── stats.ts
-    ├── layouts/
-    │   └── HubLayout.vue         # Hub 整体布局（侧栏、底栏等）
-    ├── map/                     # 地图抽象层（适配高德、类型、标注工厂）
-    │   ├── AMapAdapter.ts
-    │   ├── markerFactory.ts
-    │   └── types.ts
-    ├── router/
-    │   └── index.ts             # 路由表
-    ├── stores/                  # Pinia
-    │   ├── app.ts
-    │   ├── map.ts
-    │   └── points.ts
-    ├── theme/
-    │   └── syncThemeDom.ts
-    └── views/
-        ├── LoginView.vue        # 路由 /login
-        ├── AtelierView.vue      # 路由 /atelier
-        └── hub/                 # 路由前缀 /hub/*
-            ├── DashboardView.vue    # /hub/dashboard
-            ├── WorkshopView.vue     # /hub/workshop
-            ├── MuseumView.vue       # /hub/museum
-            ├── SocialView.vue       # /hub/social
-            ├── ExploreView.vue      # /hub/explore（地图）
-            ├── MallView.vue         # /hub/mall
-            ├── StatsView.vue        # /hub/stats
-            └── SettingsView.vue     # /hub/settings
+默认配置即可运行；需要调整时，复制 `.env.example` 为 `.env`，修改占位配置：
+
+| 变量 | 默认值 / 用途 |
+| --- | --- |
+| `HOST` / `PORT` | `127.0.0.1` / `3001`，仅本机访问 |
+| `DATABASE_PATH` | `./data/guigong.sqlite`，相对于仓库根目录 |
+| `ALLOWED_ORIGINS` | 本地 5173/3001 的精确 Origin，逗号分隔，无末尾斜杠 |
+| `SESSION_TTL_HOURS` | `168`，服务端会话有效期 |
+| `SECURE_COOKIES` | 本地 HTTP 用 `false`；HTTPS 才使用 `true` |
+| `VITE_AMAP_KEY`（可选） | 仅历史探访模块需要；缺失时地图显示降级提示，创作流程正常 |
+
+API 写请求必须携带允许的 `Origin`。浏览器自动携带；自行用 curl/HTTP 工具时需添加，例如 `Origin: http://127.0.0.1:3001`。没有跨域开放 CORS。前端开发代理目标固定为 3001，修改 API 端口时同步修改 `vite.config.ts`。
+
+## 3–5 分钟演示路线
+
+1. 登录 `demo`，打开「创作工坊」，选择「如意」或「莲华」。
+2. 拖动旋转、滚轮缩放；调整层数、纹样密度与材质，展开球壳，开启剖视，切换聚焦层。
+3. 填写作品名和说明，点击「保存作品」，确认显示「已保存」与版本号。
+4. 返回「我的作品」，搜索作品名并重新打开；刷新，检查结构、材质和观察参数恢复。
+5. 修改一个参数再保存，确认版本递增；退出、重新登录，检查作品仍存在。
+6. 可选：停止服务后再次 `npm start`，重新打开作品；注册第二个账号，其作品列表应为空。
+
+![工坊主页](docs/screenshots/workshop-desktop.jpg)
+
+移动端布局也已在约 391×844 CSS 视口检查：
+
+<img src="docs/screenshots/atelier-mobile.jpg" alt="移动三维工坊" width="300" />
+
+## 架构与接口
+
+`Vue 3 / Pinia / Vue Router → 同源 Express 5 API → SQLite 文件`；Three.js 在浏览器根据共享配置生成结构。运行时 Zod 校验放在 `shared/design.ts`，配置带 `schemaVersion`。
+
+- `src/views/AtelierView.vue`：编辑、保存恢复、未保存提醒、错误重试与异步请求生命周期。
+- `src/three/`：独立几何生成、取景、渲染器与 GPU 资源释放。
+- `server/`：迁移、密码/会话、归属权限、校验、种子和启动；SQL 使用参数绑定。
+- `users / sessions / works / schema_migrations`：作品查询与更新均包含 owner 条件，旧版本写入返回 409。
+
+| API | 行为 |
+| --- | --- |
+| `GET /api/health`、`GET /api/templates` | 健康检查、公开模板 |
+| `POST /api/auth/register`、`POST /api/auth/login` | 建立 HttpOnly / SameSite 会话 |
+| `GET /api/auth/me`、`POST /api/auth/logout` | 恢复身份、服务端撤销会话 |
+| `GET /api/works?search=`、`POST /api/works` | 当前用户搜索、创建 |
+| `GET /api/works/:id`、`PUT /api/works/:id` | 归属检查、读取与带版本更新 |
+
+密码使用随机盐 scrypt，数据库只存会话令牌摘要；认证请求有基本限流。错误返回有限 JSON 消息，未登录 401、非法输入 400、他人/不存在作品 404、版本冲突 409。暂未提供删除接口。
+
+## 验证
+
+```bash
+npm run typecheck
+npm test
+npm run build:all
+npm run test:restart  # 先构建；独立临时库与编译后进程，含正常退出和 SIGKILL 后恢复
+npm audit --omit=dev
 ```
 
-构建产物 `dist/`、`node_modules/`、`.env` 等由 `.gitignore` 忽略，不在版本库中列出。  
-**视频与展览图**：博物馆短视频封面与预览位于 `public/materials/museum/videos/covers/`、`public/materials/museum/videos/previews/`；展览卡片图在 `public/materials/museum/exhibitions/`；商城商品图在 `public/materials/mall/products/`。命名与迁移记录见 `src/assets/materials/ASSET_SPEC.md`。**完整原片**建议仅本地放在 `public/raw/`（已在 `.gitignore` 中忽略，避免超过 GitHub 单文件 100MB 限制）；克隆仓库后若需原片可自行补全该目录。
+测试包括真实 HTTP/临时 SQLite、跨账号权限、版本冲突、非法输入、种子幂等、API 客户端、实际 Vue 编辑脚本异步生命周期、几何穿孔射线、取景与资源释放。组件脚本测试注入网络和路由，不等同于浏览器测试；桌面/移动 WebGL 与主流程另外由代理操作浏览器检查。CI 复用上述命令，不运行浏览器或真实移动设备测试。
 
----
+## 范围与已知限制
 
-## 开发方法
+- **真实实现**：账号/会话、创建读取更新、个人列表和搜索、SQLite 持久化、三维参数、剖视/展开/聚焦、PNG/配置下载。
+- **保留的课程演示**：统计、积分、社交、预约、商城及文化投稿等仍含固定/内存/浏览器本地数据；不会用于冒充后端作品保存。
+- 三维剖视使用裁切平面，截面未封盖；无真实雕刻 CSG、加工级模型导出、联机协作、云存储或正式部署。
+- 三维大包仍有 >500KB 构建提示；最高六层约 38 万三角形的预算不等于低端手机性能承诺。未做设备矩阵或压力测试。
+- 本地单进程、单文件数据库方案，尚无生产备份/恢复演练、邮箱找回、监控和多实例限流。网络丢失响应后首次保存重试可能创建重复作品；应先检查列表。
+- 本轮生产依赖审计为 0；开发依赖仍有 Tailwind 3 链路告警，详见升级记录。未强行迁移 Tailwind 4。
+- 新增纹样、SVG 预览和截图均由本项目代码生成；Three.js `RoomEnvironment` 来自依赖自带 MIT 代码，没有新增下载的第三方模型。原素材及其历史说明完整保留。
 
-本项目对应**人机交互的软件工程方法**课程实践：在明确边界的前提下，用可交付的原型串联「需求—设计—实现—验证」，并用文档保证可讲解、可追溯。
-
-### 过程模型（迭代 + 文档驱动）
-
-1. **界定范围**：在 MVP 内排优先级，明确「做 / 暂缓 / 不做」（见 `docs/TEAM_WORKPLAN.md` 中的目标、非目标与阶段划分）。
-2. **设计先行**：交互与结构先在设计文档中定型，再落到代码，避免无规格堆砌页面。
-  - 地图相关：`docs/MAP_SYSTEM_DESIGN.md`（行为、数据、降级策略）。
-  - 响应式与布局：`docs/ADAPTIVE_ARCHITECTURE.md`（流体刻度、组件优先级 P0–P3）。
-  - 新模块草案：`docs/FEATURE_DESIGN_NEW_MODULES.md`；视频卡片：`docs/VideoCard-design.md`。
-3. **增量实现**：按 Hub → 单页深化 → 横切能力（地图抽象层、主题、状态库）的顺序迭代；复杂能力允许先用**模拟数据与可信流程**代替完整后端（与团队计划一致）。
-4. **验证与集成**：功能完成后在目标分辨率与主流浏览器下走通主路径；合并前至少 `**npm run build`** 通过，作为类型检查与构建基线。
-5. **回顾与归档**：重要决策写入对应 `docs/*.md`（可注明日期）；答辩与汇报要点见 `docs/DEFENSE_REPORT_KEYPOINTS.md`。
-
-### 协作与工程约定
-
-- **分支与提交**：功能分支开发，合并进 `main`；提交信息推荐 **Conventional Commits**（`feat:` / `fix:` / `docs:` / `refactor:` 等），中文概要写清「做了什么」。
-- **角色分工**（可一人多职）：产品把控范围与里程碑；Hub 前端负责路由、布局与业务页骨架；3D 负责 Atelier；UI/UX 统一令牌与交互文案；测试/集成负责清单与演示脚本（详见 `docs/TEAM_WORKPLAN.md`）。
-- **密钥**：`.env` 仅本地或组内安全渠道共享，禁止写入 README 或提交到公开远程。
-
----
-
-## 开发历程
-
-下表按**时间顺序**归纳已记录的关键节点；后续迭代可在表格末尾追加行，并在相关设计文档中补充说明。
-
-
-| 时间（约）      | 阶段 / 事项            | 说明                                                                                      | 关联文档 / 代码锚点                                  |
-| ---------- | ------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------- |
-| 项目启动       | 工程脚手架与目录约定         | Vite + Vue 3 + TS，接入 Tailwind、Pinia、Vue Router；确立 `Hub` / `Atelier` 双模式与 MVP 边界。        | `docs/TEAM_WORKPLAN.md`                      |
-| 迭代早中期      | Hub 多页与 Atelier 原型 | Dashboard、Workshop、Museum、Social、Stats、Settings 等页面骨架；三维工坊场景与导航联动；数据与文案从 `src/data` 驱动。 | `src/views/hub/`、`src/views/AtelierView.vue` |
-| 2026-04-08 | 地图系统设计成稿           | 地图交互矩阵、视觉与数据规格、接口与降级策略文档化。                                                              | `docs/MAP_SYSTEM_DESIGN.md`                  |
-| 2026-04-09 | 全站自适应架构成稿          | 流体布局、组件抽取与改造优先级（P0–P3）。                                                                 | `docs/ADAPTIVE_ARCHITECTURE.md`              |
-| 持续         | 地图能力工程化            | 将高德接入与标注等逻辑收敛到 `src/map/` 与 `src/stores/map.ts`，探索页与数据层对齐设计文档。                          | `src/map/`、`src/stores/map.ts`               |
-| 持续         | 业务扩展               | 探索 / 商城 / 社交等 Hub 子页与积分等状态；侧栏、底栏与主题切换等横切 UI。                                            | `src/views/hub/`、`src/stores/points.ts`      |
-| 2026-04-12 | 仓库与文档整理            | 以本仓库为唯一准线重建 Git 历史并推送远程；根目录 README 与 `docs/README.md` 按当前目录结构重写。                        | 本文件、`docs/README.md`                         |
-| 2026-04-23 | 工程整理与版本库卫生        | 移除脚手架残留；完善 `.gitignore`（含 `public/raw/` 大文件）；补充 `public/`、`LoginView`、`NEXT_ITERATION_BACKLOG` 等目录说明。 | `.gitignore`、本文件、`docs/NEXT_ITERATION_BACKLOG.md` |
-| 2026-05-09 | 素材与 3D 资产管线          | `public/materials/` 分模块资源、`src/assets/materials/` 规范与模型元数据；Blender 脚本生成旗舰鬼工球 GLB 等；Hub 子组件（quiz/chat）与数据层持续迭代。 | `src/assets/materials/ASSET_SPEC.md`、`tools/blender/`、`src/components/` |
-
-
-> **维护约定**：每次重要里程碑（设计定稿、大功能合入、演示前冻结）建议在本表增一行，并在 PR / 提交说明中引用对应 `docs` 或 Issue，便于课程过程材料对齐。
-
----
-
-## 协作提示
-
-- 合并或发版前建议本地执行 `npm run build`。
-- 提交信息可使用 Conventional Commits（如 `feat:`、`fix:`、`docs:`）。
-- 地图行为、响应式大改请同步维护 `docs/MAP_SYSTEM_DESIGN.md`、`docs/ADAPTIVE_ARCHITECTURE.md` 等文档。
-
----
-
-## 相关链接
-
-- [Vue 3](https://vuejs.org/) · [Vite](https://vite.dev/) · [高德开放平台](https://lbs.amap.com/) · [Tailwind CSS](https://tailwindcss.com/)
-
+[升级与验证记录](docs/UPGRADE_20261016.md) · [项目理解、取舍与简历依据](docs/PROJECT_GUIDE.md) · [原课程 README](docs/COURSE_README.md) · [历史设计文档](docs/README.md)

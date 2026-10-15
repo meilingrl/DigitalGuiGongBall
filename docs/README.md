@@ -1,7 +1,7 @@
 # 设计文档索引
 
 本目录存放产品与交互相关的说明材料。**运行项目、目录总览与快速开始见仓库根目录 [README.md](../README.md)。**  
-**开发方法（过程模型、协作约定）与开发历程（里程碑表）** 已写在根目录 README 中，与下表设计文档交叉引用。
+2026-10-16 全栈升级记录见 [UPGRADE_20261016.md](./UPGRADE_20261016.md)，项目理解与简历依据见 [PROJECT_GUIDE.md](./PROJECT_GUIDE.md)。原课程 README 保存为 [COURSE_README.md](./COURSE_README.md)，以下历史计划不再限制本轮已授权的全栈范围。
 
 ---
 
@@ -26,9 +26,10 @@
 ## 与代码的对应关系（便于检索）
 
 - **地图探索页** → `src/views/hub/ExploreView.vue`，地图抽象 → `src/map/`、`src/stores/map.ts`
-- **Hub 布局与导航** → `src/layouts/HubLayout.vue`，侧栏/底栏组件 → `src/components/HubSidebarDock.vue`、`HubBottomBar.vue`
+- **Hub 布局与导航** → `src/layouts/HubLayout.vue`，旧侧栏/底栏组件保留为历史实现；当前核心导航在 HubLayout 中
 - **三维工坊** → `src/views/AtelierView.vue`、`src/components/AtelierScene.vue`
-- **程序化 3D 资产** → `tools/blender/*.py`，发布模型与元数据 → `src/assets/materials/models/`、`documents/`
+- **当前程序化镂空几何与渲染** → `src/three/`；后端和共享契约 → `server/`、`shared/`
+- **历史程序化 3D 资产** → `tools/blender/*.py`，发布模型与元数据 → `src/assets/materials/models/`、`documents/`
 - **积分等业务状态** → `src/stores/points.ts` 等
 - **各 Hub 子页数据** → `src/data/*.ts`
 
