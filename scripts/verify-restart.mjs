@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -41,8 +42,8 @@ async function stop(signal = 'SIGTERM') {
   await ended
   child = undefined
 }
-async function request(path, method = 'GET', body, cookie) {
-  const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) }, body: body ? JSON.stringify(body) : undefined })
+async function request(path, method = 'GET', body, cookie, key) {
+  const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, body: body ? JSON.stringify(body) : undefined })
   const data = await response.json()
   assert.ok(response.ok, `HTTP ${response.status} ${data.error?.code ?? ''}`)
   return { data, headers: response.headers }
@@ -54,20 +55,40 @@ try {
   assert.match(await page.text(), /<div id="app"><\/div>/)
   const login = await request('/api/auth/register', 'POST', { username: 'restart_qa', displayName: '隔离测试', password: 'OnlyForThisTest2026!' })
   const cookie = login.headers.get('set-cookie').split(';')[0]
-  const { data: { work } } = await request('/api/works', 'POST', { title: '跨进程保存', description: '测试专用', config }, cookie)
+  const createKey = randomUUID()
+  const createBody = { title: '跨进程保存', description: '测试专用', config }
+  const { data: { work } } = await request('/api/works', 'POST', createBody, cookie, createKey)
   await stop()
   await start()
+  assert.deepEqual((await request('/api/works', 'POST', createBody, cookie, createKey)).data.work, work)
+  assert.equal((await request('/api/works', 'GET', undefined, cookie)).data.pagination.total, 1)
   const reopened = await request(`/api/works/${work.id}`, 'GET', undefined, cookie)
   assert.deepEqual(reopened.data.work, work)
   assert.equal((await request('/api/auth/me', 'GET', undefined, cookie)).data.user.username, 'restart_qa')
-  const updated = await request(`/api/works/${work.id}`, 'PUT', { title: '强制终止后仍存在', description: '', config: { ...config, material: 'jade' }, version: 1 }, cookie)
+  const updateKey = randomUUID()
+  const updateBody = { title: '强制终止后仍存在', description: '', config: { ...config, material: 'jade' }, version: 1 }
+  const updated = await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)
+  const copyKey = randomUUID()
+  const copied = await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)
+  const trashKey = randomUUID()
+  const trashed = await request(`/api/works/${copied.data.work.id}/trash`, 'POST', { version: 1 }, cookie, trashKey)
   await stop('SIGKILL')
   await start()
   assert.deepEqual((await request(`/api/works/${work.id}`, 'GET', undefined, cookie)).data.work, updated.data.work)
+  assert.deepEqual((await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)).data.work, updated.data.work)
+  assert.deepEqual((await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)).data.work, copied.data.work)
+  assert.deepEqual((await request(`/api/works/${copied.data.work.id}/trash`, 'POST', { version: 1 }, cookie, trashKey)).data.work, trashed.data.work)
+  const trashList = (await request('/api/works?state=trash', 'GET', undefined, cookie)).data
+  assert.equal(trashList.pagination.total, 1)
+  assert.deepEqual(trashList.works[0], trashed.data.work)
+  const restored = await request(`/api/works/${copied.data.work.id}/restore`, 'POST', { version: 2 }, cookie, randomUUID())
+  assert.equal(restored.data.work.version, 3)
+  assert.equal(restored.data.work.deletedAt, null)
+  assert.equal((await request('/api/works', 'GET', undefined, cookie)).data.pagination.total, 2)
   const freshLogin = await request('/api/auth/login', 'POST', { username: 'restart_qa', password: 'OnlyForThisTest2026!' })
   const freshCookie = freshLogin.headers.get('set-cookie').split(';')[0]
-  assert.equal((await request('/api/works', 'GET', undefined, freshCookie)).data.works[0].version, 2)
-  console.log('PASS: empty DB → registration → save → SIGTERM restart → update → SIGKILL restart → relogin/read; real compiled HTTP server and SPA fallback')
+  assert.equal((await request(`/api/works/${work.id}`, 'GET', undefined, freshCookie)).data.work.version, 2)
+  console.log('PASS: empty DB → registration/save → SIGTERM → create replay → update/copy/trash → SIGKILL → all replays → restore/relogin; real compiled HTTP server and SPA fallback')
 } finally {
   await stop()
   await rm(directory, { recursive: true, force: true })

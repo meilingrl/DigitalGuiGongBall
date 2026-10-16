@@ -43,3 +43,13 @@ test('API client accepts logout without a JSON response', async () => {
     assert.equal(await api(url, { method: 'POST' }), undefined)
   })
 })
+
+test('API client transmits an idempotency key unchanged for a real write request', async () => {
+  const key = '518bbd3a-d913-49c1-9e20-4c1cb8d7f66b'
+  await withServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ key: req.headers['idempotency-key'] }))
+  }, async url => {
+    assert.deepEqual(await api(url, { method: 'POST', body: { title: '唯一请求' }, idempotencyKey: key }), { key })
+  })
+})

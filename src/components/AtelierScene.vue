@@ -32,7 +32,7 @@ watch(() => props.config, (config) => stage?.setConfig(config), { deep: true })
 watch(() => props.theme, (theme) => stage?.setTheme(theme))
 onMounted(initialise)
 onBeforeUnmount(() => { stage?.dispose(); stage = undefined })
-defineExpose({ resetView: () => stage?.resetView(), exportImage: () => stage?.exportImage() })
+defineExpose({ retry: initialise, resetView: () => stage?.resetView(), exportImage: () => stage?.exportImage() })
 </script>
 
 <template>

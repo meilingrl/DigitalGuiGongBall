@@ -1,12 +1,11 @@
-import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parse } from '@vue/compiler-sfc'
-import ts from 'typescript'
-import { computed, effectScope, nextTick, reactive, ref, watch, type Ref } from 'vue'
-import { defaultConfigs, templates, type DesignConfig, type Work } from '../shared/design.js'
-import { ApiError, errorMessage } from '../src/lib/api.js'
+import { effectScope, nextTick, type Ref } from 'vue'
+import { defaultConfigs, type DesignConfig, type Work } from '../shared/design.js'
+import { ApiError } from '../src/lib/api.js'
 import { cloneDesign } from '../src/lib/draft.js'
+import { useAtelierDocument } from '../src/composables/useAtelierDocument.js'
+import type { ApiOptions } from '../src/lib/api.js'
 
 interface Editor {
   save(): Promise<void>
@@ -25,77 +24,50 @@ interface Editor {
   dirty: Ref<boolean>
 }
 
-// Execute the real SFC setup script, rather than a copied save implementation.
-// Only external I/O, router/lifecycle integration, and unrelated app stores are injected.
-const { descriptor, errors } = parse(readFileSync(new URL('../src/views/AtelierView.vue', import.meta.url), 'utf8'))
-assert.deepEqual(errors, [])
-assert.ok(descriptor.scriptSetup)
-const source = ts.createSourceFile('AtelierView.ts', descriptor.scriptSetup.content, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS)
-const withoutImports = ts.factory.updateSourceFile(source, source.statements.filter(statement => !ts.isImportDeclaration(statement)))
-const setupScript = ts.transpileModule(ts.createPrinter().printFile(withoutImports), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
-}).outputText
-
 const originalWork: Work = {
   id: 'existing-work', title: '已保存作品', description: '', config: cloneDesign(defaultConfigs.linglong),
-  version: 1, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
+  version: 1, deletedAt: null, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
 }
 
-async function createEditor(existing: boolean) {
+class MemoryStorage {
+  data = new Map<string, string>()
+  get length() { return this.data.size }
+  key(index: number) { return [...this.data.keys()][index] ?? null }
+  getItem(key: string) { return this.data.get(key) ?? null }
+  setItem(key: string, value: string) { this.data.set(key, value) }
+  removeItem(key: string) { this.data.delete(key) }
+}
+
+async function createEditor(existing: boolean, storage = new MemoryStorage()) {
   const scope = effectScope()
-  const unmountHooks: Array<() => void> = []
   const navigations: string[] = []
-  const route = reactive({
-    params: existing ? { id: originalWork.id } as Record<string, string> : {} as Record<string, string>,
-    query: {} as Record<string, string>,
-  })
   const mutations: Array<{
-    path: string
-    method: string
+    path: string; method: string; key?: string;
     body: { title: string; description: string; config: DesignConfig; version?: number }
     resolve(value: { work: Work }): void
     reject(reason: Error): void
   }> = []
   let reads = 0
-  const api = (path: string, options?: { method: string; body: typeof mutations[number]['body'] }) => {
+  const request = (path: string, options?: ApiOptions) => {
     if (!options) { reads++; return Promise.resolve({ work: structuredClone(originalWork) }) }
     return new Promise<{ work: Work }>((resolve, reject) => {
-      mutations.push({ path, method: options.method, body: options.body, resolve, reject })
+      mutations.push({ path, method: options.method!, key: options.idempotencyKey, body: options.body as typeof mutations[number]['body'], resolve, reject })
     })
   }
-  const bindings = {
-    computed, ref, watch,
-    onBeforeUnmount: (callback: () => void) => unmountHooks.push(callback),
-    onBeforeRouteLeave: (_callback: () => boolean) => {},
-    useRoute: () => route,
-    useRouter: () => ({ replace: async (path: string) => {
-      navigations.push(path)
-      route.params = { id: path.split('/').at(-1)! }
-      route.query = {}
-      await nextTick()
-    } }),
-    defaultConfigs, templates, api, ApiError, errorMessage, cloneDesign,
-    useAppStore: () => ({ theme: 'light' }),
-    window: { addEventListener() {}, removeEventListener() {}, confirm: () => true },
-  }
-  const runSetup = new Function(...Object.keys(bindings), `${setupScript}\nreturn { save, load, title, description, config, work, baseline, loading, loadError, saveError, saveState, conflict, expired, dirty };`)
-  const editor = scope.run(() => runSetup(...Object.values(bindings))) as Editor
-  await nextTick()
+  const editor = scope.run(() => useAtelierDocument({
+    userId: 'user-a', storage, request,
+    source: () => existing ? { workId: originalWork.id } : { templateId: 'linglong' },
+    replaceWorkId: async id => { navigations.push(`/atelier/${id}`) },
+  }))!
+  await editor.load()
   assert.equal(editor.loading.value, false)
   assert.equal(editor.dirty.value, false)
   return {
-    editor, mutations, navigations,
+    editor, mutations, navigations, storage,
     reads: () => reads,
-    unmount() {
-      for (const hook of unmountHooks) hook()
-      scope.stop()
-      // Vue Router's reactive current route continues updating after this view leaves.
-      route.params = {}
-      route.query = {}
-    },
-    settleSuccess() {
-      assert.equal(mutations.length, 1)
-      const mutation = mutations[0]!
+    unmount() { scope.stop() },
+    settleSuccess(index = 0) {
+      const mutation = mutations[index]!
       const { version: _version, ...body } = mutation.body
       mutation.resolve({ work: { ...originalWork, ...body, id: existing ? originalWork.id : 'created-work', version: existing ? 2 : 1 } })
     },
@@ -193,3 +165,88 @@ for (const existing of [false, true]) {
     } finally { harness.unmount() }
   })
 }
+
+for (const existing of [false, true]) {
+  test(`${existing ? 'PUT' : 'POST'} retries an ambiguous response using the same immutable key and body`, async () => {
+    const h = await createEditor(existing)
+    try {
+      h.editor.title.value = '第一次提交'
+      const first = h.editor.save()
+      h.mutations[0]!.reject(new ApiError('连接中断'))
+      await first
+      h.editor.title.value = '断网之后的新修改'
+      const retry = h.editor.save()
+      assert.ok(h.mutations[0]!.key)
+      assert.equal(h.mutations[1]!.key, h.mutations[0]!.key)
+      assert.deepEqual(h.mutations[1]!.body, h.mutations[0]!.body)
+      h.settleSuccess(1)
+      await retry
+      assert.equal(h.editor.title.value, '断网之后的新修改')
+      assert.equal(h.editor.dirty.value, true)
+      assert.equal(h.editor.work.value!.title, '第一次提交')
+      const next = h.editor.save()
+      assert.notEqual(h.mutations[2]!.key, h.mutations[1]!.key)
+      assert.equal(h.mutations[2]!.body.title, '断网之后的新修改')
+      assert.equal(h.mutations[2]!.body.version, existing ? 2 : 1)
+      h.settleSuccess(2)
+      await next
+    } finally { h.unmount() }
+  })
+
+  test(`${existing ? 'PUT' : 'POST'} offers an owned recovery draft after reload and retries the original attempt`, async () => {
+    const h = await createEditor(existing)
+    h.editor.title.value = '需要恢复的修改'
+    const pending = h.editor.save()
+    h.editor.config.value.material = 'bronze'
+    h.mutations[0]!.reject(new ApiError('连接中断'))
+    await pending
+    const key = h.mutations[0]!.key
+    h.unmount()
+    const recovered = await createEditor(existing, h.storage)
+    try {
+      assert.ok(recovered.editor.recovery.value)
+      assert.notEqual(recovered.editor.title.value, '需要恢复的修改', 'restoring requires explicit user intent')
+      recovered.editor.restoreDraft()
+      assert.equal(recovered.editor.title.value, '需要恢复的修改')
+      assert.equal(recovered.editor.config.value.material, 'bronze')
+      assert.equal(recovered.editor.dirty.value, true)
+      const retry = recovered.editor.save()
+      assert.equal(recovered.mutations[0]!.key, key)
+      assert.equal(recovered.mutations[0]!.body.config.material, 'ivory')
+      recovered.settleSuccess()
+      await retry
+      assert.equal(recovered.editor.dirty.value, true)
+      assert.equal(recovered.editor.config.value.material, 'bronze')
+    } finally { recovered.unmount() }
+  })
+}
+
+test('a clean acknowledged save removes its device draft and subsequent opening has no recovery offer', async () => {
+  const h = await createEditor(true)
+  h.editor.title.value = '正式保存'
+  const pending = h.editor.save()
+  h.settleSuccess()
+  await pending
+  assert.equal(h.editor.dirty.value, false)
+  assert.equal(h.storage.length, 0)
+  h.unmount()
+  const reopened = await createEditor(true, h.storage)
+  assert.equal(reopened.editor.recovery.value, null)
+  reopened.unmount()
+})
+
+test('device storage failures stay visible while real server saves remain available', async () => {
+  const storage = new MemoryStorage()
+  storage.setItem = () => { throw new Error('QuotaExceededError') }
+  const h = await createEditor(true, storage)
+  try {
+    h.editor.title.value = '存储空间不足时的作品'
+    await nextTick()
+    assert.ok(h.editor.draftNotice.value)
+    const pending = h.editor.save()
+    h.settleSuccess()
+    await pending
+    assert.equal(h.editor.work.value!.title, '存储空间不足时的作品')
+    assert.equal(h.editor.dirty.value, false)
+  } finally { h.unmount() }
+})

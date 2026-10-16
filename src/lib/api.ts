@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-type ApiOptions = { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; signal?: AbortSignal }
+export type ApiOptions = { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; signal?: AbortSignal; idempotencyKey?: string }
 
 export async function api<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const controller = new AbortController()
@@ -21,7 +21,10 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
     const response = await fetch(path, {
       method: options.method ?? 'GET',
       credentials: 'same-origin',
-      headers: options.body === undefined ? {} : { 'Content-Type': 'application/json' },
+      headers: {
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
+      },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
     })
@@ -43,4 +46,11 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请重试'
+}
+
+// Authentication/origin/rate-limit gates can reject a confirmation request
+// before the journal is consulted. They cannot disprove an earlier commit.
+export function isDefinitiveWriteRejection(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500
+    && ![401, 403, 408, 425, 429].includes(error.status)
 }
