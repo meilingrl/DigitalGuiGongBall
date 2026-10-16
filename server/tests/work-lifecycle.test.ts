@@ -188,3 +188,29 @@ test('a work at the safe version limit can still be copied while incrementing mu
     [`/api/works/${work.id}/trash`, 'POST', { version: Number.MAX_SAFE_INTEGER }],
   ] as const) assert.equal((await api.request(path, { method, cookie, body })).status, 409)
 })
+
+test('expected principal is a consistency guard on every work route and never an authorization source', async t => {
+  const f = await workFixture(t)
+  const aliceCookie = await f.signup('alice_expected')
+  const bobCookie = await f.signup('bob_expected')
+  const alice = (await f.request('/api/auth/me', { cookie: aliceCookie })).data.user
+  const bob = (await f.request('/api/auth/me', { cookie: bobCookie })).data.user
+  const created = (await f.request('/api/works', { method: 'POST', cookie: aliceCookie, body: workInput })).data.work
+  for (const route of [
+    { path: '/api/works' }, { path: `/api/works/${created.id}` },
+    { path: '/api/works', method: 'POST', body: workInput },
+    { path: `/api/works/${created.id}`, method: 'PUT', body: { ...workInput, version: 1 } },
+    ...['duplicate', 'trash', 'restore'].map(action => ({ path: `/api/works/${created.id}/${action}`, method: 'POST', body: { version: 1 } })),
+  ]) {
+    const { path, ...options } = route
+    const response = await f.request(path, { ...options, cookie: bobCookie, expectedUserId: alice.id })
+    assert.equal(response.status, 401, path)
+    assert.equal(response.data.error.code, 'ACCOUNT_CHANGED')
+  }
+  assert.equal((await f.request('/api/works', { cookie: bobCookie })).data.pagination.total, 0)
+  const forged = await f.request(`/api/works/${created.id}`, { cookie: bobCookie, expectedUserId: bob.id })
+  assert.equal(forged.status, 404, 'matching a header to your own identity cannot access another owner')
+  assert.equal((await f.request('/api/works', { expectedUserId: alice.id })).status, 401, 'a header alone is not authentication')
+  assert.equal((await f.request('/api/works', { cookie: aliceCookie, expectedUserId: alice.id })).status, 200)
+  assert.equal((await f.request('/api/works', { cookie: aliceCookie })).status, 200, 'old clients remain compatible')
+})

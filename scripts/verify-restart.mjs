@@ -16,6 +16,7 @@ const origin = `http://127.0.0.1:${port}`
 let child
 let ended
 let output = ''
+let expectedUserId
 const config = { schemaVersion: 1, templateId: 'lianhua', layers: 5, patternScale: 12, aperture: .65, material: 'bronze', separation: .6, cutaway: true, autoRotate: false, activeLayer: 0 }
 
 async function start() {
@@ -43,7 +44,7 @@ async function stop(signal = 'SIGTERM') {
   child = undefined
 }
 async function request(path, method = 'GET', body, cookie, key) {
-  const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, body: body ? JSON.stringify(body) : undefined })
+  const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(key ? { 'Idempotency-Key': key } : {}), ...(expectedUserId && path.startsWith('/api/works') ? { 'X-Expected-User-Id': expectedUserId } : {}) }, body: body ? JSON.stringify(body) : undefined })
   const data = await response.json()
   assert.ok(response.ok, `HTTP ${response.status} ${data.error?.code ?? ''}`)
   return { data, headers: response.headers }
@@ -55,6 +56,7 @@ try {
   assert.match(await page.text(), /<div id="app"><\/div>/)
   const login = await request('/api/auth/register', 'POST', { username: 'restart_qa', displayName: '隔离测试', password: 'OnlyForThisTest2026!' })
   const cookie = login.headers.get('set-cookie').split(';')[0]
+  expectedUserId = login.data.user.id
   const createKey = randomUUID()
   const createBody = { title: '跨进程保存', description: '测试专用', config }
   const { data: { work } } = await request('/api/works', 'POST', createBody, cookie, createKey)
@@ -88,7 +90,14 @@ try {
   const freshLogin = await request('/api/auth/login', 'POST', { username: 'restart_qa', password: 'OnlyForThisTest2026!' })
   const freshCookie = freshLogin.headers.get('set-cookie').split(';')[0]
   assert.equal((await request(`/api/works/${work.id}`, 'GET', undefined, freshCookie)).data.work.version, 2)
-  console.log('PASS: empty DB → registration/save → SIGTERM → create replay → update/copy/trash → SIGKILL → all replays → restore/relogin; real compiled HTTP server and SPA fallback')
+  const otherLogin = await request('/api/auth/register', 'POST', { username: 'other_restart_qa', displayName: '另一个隔离账号', password: 'OnlyForThisTest2026!' })
+  const otherCookie = otherLogin.headers.get('set-cookie').split(';')[0]
+  const drift = await fetch(origin + '/api/works', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: otherCookie, 'Idempotency-Key': createKey, 'X-Expected-User-Id': expectedUserId }, body: JSON.stringify(createBody) })
+  assert.equal(drift.status, 401)
+  assert.equal((await drift.json()).error.code, 'ACCOUNT_CHANGED')
+  const otherList = await fetch(origin + '/api/works', { headers: { Cookie: otherCookie } })
+  assert.equal((await otherList.json()).pagination.total, 0)
+  console.log('PASS: empty DB → registration/save → SIGTERM → create replay → update/copy/trash → SIGKILL → all replays → restore/relogin/principal guard; real compiled HTTP server and SPA fallback')
 } finally {
   await stop()
   await rm(directory, { recursive: true, force: true })

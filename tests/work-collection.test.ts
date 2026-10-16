@@ -28,7 +28,7 @@ test('ambiguous copy retries use the original key and version and only show succ
   let fail = true
   const scope = effectScope()
   const model = scope.run(() => useWorkCollection({ userId: 'user-a', request: async (_url, options) => {
-    if (!options) return page()
+    if (!options?.method) return page()
     calls.push(options)
     if (fail) throw new ApiError('网络中断')
     return { work: { ...work, id: 'copy-id' } }
@@ -92,7 +92,7 @@ test('a pending copy survives leaving and reopening with the same immutable requ
   const calls: ApiOptions[] = []
   let fail = true
   const request = async (_url: string, options?: ApiOptions) => {
-    if (!options) return page()
+    if (!options?.method) return page()
     calls.push(options)
     if (fail) throw new ApiError('复制已提交，响应丢失')
     return { work: { ...work, id: 'confirmed-copy' } }

@@ -31,10 +31,11 @@ export async function workFixture(t: TestContext, options: Partial<AppOptions> =
   }
   await open()
   t.after(async () => { await close(); await rm(directory, { recursive: true, force: true }) })
-  async function request(path: string, options: { method?: string; body?: unknown; cookie?: string; key?: string } = {}) {
+  async function request(path: string, options: { method?: string; body?: unknown; cookie?: string; key?: string; expectedUserId?: string } = {}) {
     const headers: Record<string, string> = { Origin: origin }
     if (options.cookie) headers.Cookie = options.cookie
     if (options.key !== undefined) headers['Idempotency-Key'] = options.key
+    if (options.expectedUserId !== undefined) headers['X-Expected-User-Id'] = options.expectedUserId
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     const response = await fetch(`${base}${path}`, {
       method: options.method ?? 'GET', headers,

@@ -40,7 +40,7 @@ export function useWorkCollection(options: Options) {
     loading.value = true; error.value = ''; expired.value = false
     const query = new URLSearchParams({ search: search.value, state: state.value, page: String(pagination.value.page), pageSize: String(pagination.value.pageSize) })
     try {
-      const data = await request(`/api/works?${query}`) as { works: Work[]; pagination: Pagination }
+      const data = await request(`/api/works?${query}`, { expectedUserId: options.userId }) as { works: Work[]; pagination: Pagination }
       if (current !== sequence || disposed) return
       // Removing the last item on a page should reveal the previous page rather
       // than claim the account is empty. The follow-up is bounded to one clamp.
@@ -73,7 +73,7 @@ export function useWorkCollection(options: Options) {
     recoveryNotice.value = persisted.notice ?? ''
     try {
       const result = await request(`/api/works/${encodeURIComponent(attempt.id)}/${attempt.action}`, {
-        method: 'POST', body: { version: attempt.version }, idempotencyKey: attempt.key,
+        method: 'POST', body: { version: attempt.version }, idempotencyKey: attempt.key, expectedUserId: options.userId,
       }) as { work: Work }
       if (disposed) return
       clearAttempt()

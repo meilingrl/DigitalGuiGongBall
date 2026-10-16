@@ -49,7 +49,7 @@ async function createEditor(existing: boolean, storage = new MemoryStorage()) {
   }> = []
   let reads = 0
   const request = (path: string, options?: ApiOptions) => {
-    if (!options) { reads++; return Promise.resolve({ work: structuredClone(originalWork) }) }
+    if (!options?.method) { reads++; return Promise.resolve({ work: structuredClone(originalWork) }) }
     return new Promise<{ work: Work }>((resolve, reject) => {
       mutations.push({ path, method: options.method!, key: options.idempotencyKey, body: options.body as typeof mutations[number]['body'], resolve, reject })
     })
@@ -248,5 +248,29 @@ test('device storage failures stay visible while real server saves remain availa
     await pending
     assert.equal(h.editor.work.value!.title, '存储空间不足时的作品')
     assert.equal(h.editor.dirty.value, false)
+  } finally { h.unmount() }
+})
+
+test('the editor keeps retention cleanup visible after evicting a device draft, including later edits', async () => {
+  const { writeDraft } = await import('../src/lib/drafts.js')
+  const storage = new MemoryStorage()
+  const now = Date.now()
+  for (let index = 0; index < 20; index++) {
+    const title = `旧稿${index}`
+    const body = { title, description: '', config: cloneDesign(defaultConfigs.linglong), version: 1 }
+    assert.equal(writeDraft(storage, {
+      schemaVersion: 1, userId: 'user-a', target: `work:old-${index}`, title,
+      description: '', config: cloneDesign(defaultConfigs.linglong), baseVersion: 1,
+      updatedAt: now - 20000 + index,
+      pendingSave: index === 0 ? { key: '438906ae-6796-4936-afc5-502744c91632', method: 'PUT', path: '/api/works/old-0', body, snapshot: JSON.stringify({ title, description: '', config: body.config }) } : null,
+    }, now).ok, true)
+  }
+  const h = await createEditor(false, storage)
+  try {
+    h.editor.title.value = '第21份设备草稿'
+    assert.match(h.editor.draftNotice.value, /清理|上限/)
+    h.editor.description.value = '下一次自动保存不能悄悄抹掉清理通知'
+    assert.match(h.editor.draftNotice.value, /清理|上限/)
+    assert.equal(storage.length, 20)
   } finally { h.unmount() }
 })

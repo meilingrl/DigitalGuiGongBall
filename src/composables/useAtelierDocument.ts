@@ -43,6 +43,7 @@ export function useAtelierDocument(options: Options) {
   let generation = 0
   let applying = false
   let disposed = false
+  let retentionNotice = ''
 
   function remove(targetKey: string) {
     const result = removeDraft(options.storage, options.userId, targetKey)
@@ -62,7 +63,13 @@ export function useAtelierDocument(options: Options) {
       title: title.value, description: description.value, config: config.value,
       baseVersion: baseVersion.value, updatedAt, pendingSave: pendingSave.value,
     }, updatedAt)
-    if (result.ok) { localDraftAt.value = updatedAt; draftNotice.value = '' }
+    if (result.ok) {
+      localDraftAt.value = updatedAt
+      // Successful storage can still prune older recovery records. Keep that
+      // notice visible through subsequent keystrokes rather than swallowing it.
+      if (result.notice) retentionNotice = result.notice
+      draftNotice.value = retentionNotice
+    }
     else draftNotice.value = result.notice ?? '无法保存此设备草稿，请尽快保存到服务端或下载配置'
     return result.ok
   }
@@ -74,11 +81,11 @@ export function useAtelierDocument(options: Options) {
     const current = ++generation
     loading.value = true; loadError.value = ''; saveError.value = ''; saveState.value = 'idle'
     conflict.value = false; expired.value = false; pendingSave.value = null; recovery.value = null
-    localDraftAt.value = null; draftNotice.value = ''
+    localDraftAt.value = null; draftNotice.value = ''; retentionNotice = ''
     try {
       const source = options.source()
       if (source.workId) {
-        const result = await request(`/api/works/${encodeURIComponent(source.workId)}`)
+        const result = await request(`/api/works/${encodeURIComponent(source.workId)}`, { expectedUserId: options.userId })
         if (current !== generation) return
         work.value = result.work
         title.value = result.work.title; description.value = result.work.description
@@ -144,7 +151,7 @@ export function useAtelierDocument(options: Options) {
     const attempt = pendingSave.value
     persistDraft()
     try {
-      const result = await request(attempt.path, { method: attempt.method, body: attempt.body, idempotencyKey: attempt.key })
+      const result = await request(attempt.path, { method: attempt.method, body: attempt.body, idempotencyKey: attempt.key, expectedUserId: options.userId })
       if (current !== generation || disposed) return
       applying = true
       work.value = result.work

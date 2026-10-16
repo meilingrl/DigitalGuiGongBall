@@ -22,11 +22,11 @@ for (const existing of [false, true]) {
     const initial = existing ? (await f.request('/api/works', { method: 'POST', body: workInput, cookie })).data.work : null
     let loseNextResponse = true
     const request = async (path: string, options?: ApiOptions) => {
-      const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey })
+      const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey, expectedUserId: options?.expectedUserId })
       if (response.status >= 400) throw new ApiError(response.data.error.message, response.status, response.data.error.code)
       // Fault is injected after a real HTTP response has been read. The actual
       // server has committed; the document must act as if the response was lost.
-      if (options && loseNextResponse) { loseNextResponse = false; throw new ApiError('Injected lost response after commit') }
+      if (options?.method && loseNextResponse) { loseNextResponse = false; throw new ApiError('Injected lost response after commit') }
       return response.data
     }
     const storage = new DeviceStorage()
@@ -71,9 +71,9 @@ test('real HTTP copy commits once when its response is lost and the collection i
   const work = (await f.request('/api/works', { method: 'POST', body: workInput, cookie })).data.work
   let lose = true
   const request = async (path: string, options?: ApiOptions) => {
-    const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey })
+    const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey, expectedUserId: options?.expectedUserId })
     if (response.status >= 400) throw new ApiError(response.data.error.message, response.status, response.data.error.code)
-    if (options && lose) { lose = false; throw new ApiError('Injected lost copy response after commit') }
+    if (options?.method && lose) { lose = false; throw new ApiError('Injected lost copy response after commit') }
     return response.data
   }
   const storage = new DeviceStorage()
@@ -104,9 +104,9 @@ for (const operation of ['create', 'update', 'copy'] as const) {
     const original = operation === 'create' ? null : (await f.request('/api/works', { method: 'POST', body: workInput, cookie })).data.work
     let lose = true
     const request = async (path: string, options?: ApiOptions) => {
-      const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey })
+      const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey, expectedUserId: options?.expectedUserId })
       if (response.status >= 400) throw new ApiError(response.data.error.message, response.status, response.data.error.code)
-      if (options && lose) { lose = false; throw new ApiError('Injected lost response') }
+      if (options?.method && lose) { lose = false; throw new ApiError('Injected lost response') }
       return response.data
     }
     const storage = new DeviceStorage()
@@ -142,6 +142,56 @@ for (const operation of ['create', 'update', 'copy'] as const) {
         assert.equal(editor.work.value!.version, operation === 'update' ? 2 : 1)
       }
       assert.equal((await f.request('/api/works', { cookie })).data.pagination.total, operation === 'copy' ? 2 : 1)
+    } finally { scope.stop() }
+  })
+}
+
+for (const operation of ['create', 'update', 'copy'] as const) {
+  test(`${operation} refuses a different session principal before replaying an account-owned pending intent`, async t => {
+    const { useWorkCollection } = await import('../src/composables/useWorkCollection.js')
+    const f = await workFixture(t)
+    let cookie = await f.signup()
+    const aliceCookie = cookie
+    const alice = (await f.request('/api/auth/me', { cookie })).data.user
+    const original = operation === 'create' ? null : (await f.request('/api/works', { method: 'POST', body: workInput, cookie })).data.work
+    let lose = true
+    const request = async (path: string, options?: ApiOptions) => {
+      const response = await f.request(path, { method: options?.method, body: options?.body, cookie, key: options?.idempotencyKey, expectedUserId: options?.expectedUserId })
+      if (response.status >= 400) throw new ApiError(response.data.error.message, response.status, response.data.error.code)
+      if (options?.method && lose) { lose = false; throw new ApiError('Injected lost response') }
+      return response.data
+    }
+    const storage = new DeviceStorage()
+    let scope = effectScope()
+    const editorOptions = { userId: alice.id, storage, request, source: () => operation === 'update' ? { workId: original.id } : { templateId: 'linglong' }, replaceWorkId: async (_id: string) => {} }
+    let editor = operation !== 'copy' ? scope.run(() => useAtelierDocument(editorOptions))! : null
+    let collection = operation === 'copy' ? scope.run(() => useWorkCollection({ userId: alice.id, storage, request }))! : null
+    if (editor) { await editor.load(); editor.title.value = 'A账号的私人草稿'; await editor.save() }
+    else await collection!.mutate(original, 'duplicate')
+    const key = editor?.pendingSave.value?.key ?? collection!.pendingAction.value?.key
+    assert.ok(key)
+    const bobCookie = await f.signup('other_artisan')
+    cookie = bobCookie // The browser's HttpOnly cookie can change in another tab.
+    if (editor) await editor.save()
+    else await collection!.retryAction()
+    assert.equal(editor?.expired.value ?? collection!.expired.value, true)
+    assert.equal(editor?.pendingSave.value?.key ?? collection?.pendingAction.value?.key, key)
+    assert.equal((await f.request('/api/works', { cookie: bobCookie })).data.pagination.total, 0, 'A draft must never become B work')
+    assert.equal((await f.request('/api/works', { cookie: aliceCookie })).data.pagination.total, operation === 'copy' ? 2 : 1)
+    scope.stop()
+    cookie = aliceCookie
+    scope = effectScope()
+    try {
+      if (operation === 'copy') {
+        collection = scope.run(() => useWorkCollection({ userId: alice.id, storage, request }))!
+        await collection.retryAction()
+        assert.equal(collection.pendingAction.value, null)
+      } else {
+        editor = scope.run(() => useAtelierDocument(editorOptions))!
+        await editor.load(); editor.restoreDraft(); await editor.save()
+        assert.equal(editor.pendingSave.value, null)
+        assert.equal(editor.work.value!.version, operation === 'update' ? 2 : 1)
+      }
     } finally { scope.stop() }
   })
 }

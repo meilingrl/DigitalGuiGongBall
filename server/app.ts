@@ -87,6 +87,15 @@ export function createApp(options: AppOptions) {
     sessions.revoke(request, response)
     response.status(204).end()
   })
+  app.use('/api/works', (request, _response, next) => {
+    const expected = request.get('X-Expected-User-Id')
+    // This header is only a consistency guard. The authenticated session and
+    // owner-scoped SQL remain the authority; a supplied id grants no access.
+    if (expected !== undefined && sessions.require(request).id !== expected) {
+      throw new ApiError(401, 'ACCOUNT_CHANGED', '登录账号已在其他页面更换，请重新登录后再操作；原草稿与待确认请求已保留')
+    }
+    next()
+  })
   function mutate(request: Request, response: Response, ownerId: string, input: object, status: number, operation: () => Work) {
     const result = executeMutation(db, {
       ownerId, key: parseIdempotencyKey(request.get('Idempotency-Key')), method: request.method,

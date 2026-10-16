@@ -53,3 +53,13 @@ test('API client transmits an idempotency key unchanged for a real write request
     assert.deepEqual(await api(url, { method: 'POST', body: { title: '唯一请求' }, idempotencyKey: key }), { key })
   })
 })
+
+test('API client binds work reads and writes to the expected authenticated principal header', async () => {
+  await withServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ expected: req.headers['x-expected-user-id'], method: req.method }))
+  }, async url => {
+    assert.deepEqual(await api(url, { expectedUserId: 'current-user' }), { expected: 'current-user', method: 'GET' })
+    assert.deepEqual(await api(url, { method: 'POST', body: {}, expectedUserId: 'current-user' }), { expected: 'current-user', method: 'POST' })
+  })
+})

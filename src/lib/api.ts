@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiOptions = { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; signal?: AbortSignal; idempotencyKey?: string }
+export type ApiOptions = { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; signal?: AbortSignal; idempotencyKey?: string; expectedUserId?: string }
 
 export async function api<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const controller = new AbortController()
@@ -24,6 +24,7 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
       headers: {
         ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
+        ...(options.expectedUserId ? { 'X-Expected-User-Id': options.expectedUserId } : {}),
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
