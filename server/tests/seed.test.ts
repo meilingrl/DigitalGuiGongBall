@@ -37,7 +37,7 @@ test('seeds one demo account and two valid works idempotently without resetting 
     assert.equal(db.prepare('SELECT count(*) AS count FROM works').get()!.count, 2)
     assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id as string)!.password_hash, passwordHash)
     assert.equal(db.prepare('SELECT title FROM works WHERE id = ?').get('demo-linglong')!.title, '用户修改后的示例')
-    assert.equal(db.prepare('SELECT count(*) AS count FROM schema_migrations').get()!.count, 1)
+    assert.equal(db.prepare('SELECT count(*) AS count FROM schema_migrations').get()!.count, 2)
   } finally { db.close(); await rm(directory, { recursive: true, force: true }) }
 })
 

@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
-import express from 'express'
-import { designConfigSchema, templates, type Work } from '../shared/design.js'
+import express, { type Request, type Response } from 'express'
+import { templates, type Work } from '../shared/design.js'
 import { createSessions, hashPassword, publicUser, verifyPassword } from './auth.js'
 import { openDatabase } from './database.js'
 import { ApiError, errorHandler } from './errors.js'
 import { authRateLimiter } from './rate-limit.js'
-import { createWorkSchema, loginSchema, registerSchema, updateWorkSchema, workSearchSchema } from './validation.js'
+import { createWorkSchema, duplicateWorkSchema, loginSchema, registerSchema, updateWorkSchema, workSearchSchema, workVersionSchema } from './validation.js'
+import { executeMutation, parseIdempotencyKey } from './idempotency.js'
+import { createWorks } from './works.js'
 
 export interface AppOptions {
   dbPath: string
@@ -18,17 +20,10 @@ export interface AppOptions {
   staticDir?: string
 }
 
-function workFromRow(row: Record<string, unknown>): Work {
-  return {
-    id: String(row.id), title: String(row.title), description: String(row.description),
-    config: designConfigSchema.parse(JSON.parse(String(row.config_json))), version: Number(row.version),
-    createdAt: String(row.created_at), updatedAt: String(row.updated_at),
-  }
-}
-
 export function createApp(options: AppOptions) {
   const db = openDatabase(options.dbPath)
   const now = options.now ?? Date.now
+  const works = createWorks(db, now)
   const origins = new Set(options.allowedOrigins ?? [
     'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3001', 'http://127.0.0.1:3001',
   ])
@@ -92,43 +87,43 @@ export function createApp(options: AppOptions) {
     sessions.revoke(request, response)
     response.status(204).end()
   })
+  function mutate(request: Request, response: Response, ownerId: string, input: object, status: number, operation: () => Work) {
+    const result = executeMutation(db, {
+      ownerId, key: parseIdempotencyKey(request.get('Idempotency-Key')), method: request.method,
+      path: request.path, input, now,
+    }, () => ({ status, body: { work: operation() } }))
+    response.status(result.status).json(result.body)
+  }
   app.get('/api/works', (request, response) => {
     const user = sessions.require(request)
-    const { search = '' } = workSearchSchema.parse(request.query)
-    const rows = db.prepare(`
-      SELECT * FROM works WHERE owner_id = ? AND (instr(title, ?) > 0 OR instr(description, ?) > 0)
-      ORDER BY updated_at DESC, id DESC
-    `).all(user.id, search, search)
-    response.json({ works: rows.map(workFromRow) })
+    response.json(works.list(user.id, workSearchSchema.parse(request.query)))
   })
   app.post('/api/works', (request, response) => {
     const user = sessions.require(request)
     const input = createWorkSchema.parse(request.body)
-    const id = randomUUID()
-    const time = new Date(now()).toISOString()
-    db.prepare('INSERT INTO works(id, owner_id, title, description, config_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
-      .run(id, user.id, input.title, input.description, JSON.stringify(input.config), time, time)
-    response.status(201).json({ work: { id, ...input, version: 1, createdAt: time, updatedAt: time } })
+    mutate(request, response, user.id, input, 201, () => works.create(user.id, input))
   })
   app.get('/api/works/:id', (request, response) => {
     const user = sessions.require(request)
-    const row = db.prepare('SELECT * FROM works WHERE id = ? AND owner_id = ?').get(String(request.params.id), user.id)
-    if (!row) throw new ApiError(404, 'NOT_FOUND', '找不到这件作品')
-    response.json({ work: workFromRow(row) })
+    response.json({ work: works.find(user.id, String(request.params.id)) })
   })
   app.put('/api/works/:id', (request, response) => {
     const user = sessions.require(request)
-    const id = String(request.params.id)
     const input = updateWorkSchema.parse(request.body)
-    const result = db.prepare(`
-      UPDATE works SET title = ?, description = ?, config_json = ?, version = version + 1, updated_at = ?
-      WHERE id = ? AND owner_id = ? AND version = ?
-    `).run(input.title, input.description, JSON.stringify(input.config), new Date(now()).toISOString(), id, user.id, input.version)
-    const row = db.prepare('SELECT * FROM works WHERE id = ? AND owner_id = ?').get(id, user.id)
-    if (!row) throw new ApiError(404, 'NOT_FOUND', '找不到这件作品')
-    if (result.changes === 0) throw new ApiError(409, 'VERSION_CONFLICT', '作品已在其他页面更新，请重新打开后再保存')
-    response.json({ work: workFromRow(row) })
+    mutate(request, response, user.id, input, 200, () => works.update(user.id, String(request.params.id), input))
   })
+  app.post('/api/works/:id/duplicate', (request, response) => {
+    const user = sessions.require(request)
+    const input = duplicateWorkSchema.parse(request.body)
+    mutate(request, response, user.id, input, 201, () => works.duplicate(user.id, String(request.params.id), input))
+  })
+  for (const operation of ['trash', 'restore'] as const) {
+    app.post(`/api/works/:id/${operation}`, (request, response) => {
+      const user = sessions.require(request)
+      const input = workVersionSchema.parse(request.body)
+      mutate(request, response, user.id, input, 200, () => works.changeState(user.id, String(request.params.id), input.version, operation === 'trash' ? 'trash' : 'active'))
+    })
+  }
   app.use('/api', (_request, _response, next) => next(new ApiError(404, 'NOT_FOUND', '找不到这个接口')))
   if (options.staticDir) {
     const directory = resolve(options.staticDir)

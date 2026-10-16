@@ -2,6 +2,8 @@ import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
+export const SCHEMA_VERSION = 2
+
 export function openDatabase(filename: string): DatabaseSync {
   if (filename !== ':memory:') mkdirSync(dirname(resolve(filename)), { recursive: true, mode: 0o700 })
   const db = new DatabaseSync(filename)
@@ -13,10 +15,10 @@ export function openDatabase(filename: string): DatabaseSync {
         applied_at TEXT NOT NULL
       );
     `)
-    const migrated = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').get()
-    if (!migrated) {
-      db.exec('BEGIN IMMEDIATE')
-      try {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const migrated = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').get()
+      if (!migrated) {
         db.exec(`
           CREATE TABLE users (
             id TEXT PRIMARY KEY,
@@ -46,11 +48,38 @@ export function openDatabase(filename: string): DatabaseSync {
           CREATE INDEX works_owner_updated_idx ON works(owner_id, updated_at DESC);
         `)
         db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)').run(new Date().toISOString())
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
       }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
+    }
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const migratedV2 = db.prepare('SELECT version FROM schema_migrations WHERE version = 2').get()
+      if (!migratedV2) {
+        db.exec(`
+          ALTER TABLE works ADD COLUMN deleted_at TEXT;
+          DROP INDEX IF EXISTS works_owner_updated_idx;
+          CREATE INDEX works_owner_state_updated_idx ON works(owner_id, deleted_at, updated_at DESC, id DESC);
+          CREATE TABLE mutation_journal (
+            owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            method TEXT NOT NULL,
+            path TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            status INTEGER NOT NULL CHECK(status BETWEEN 200 AND 299),
+            response_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(owner_id, key)
+          );
+        `)
+        db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)').run(new Date().toISOString())
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
     }
     return db
   } catch (error) {

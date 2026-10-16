@@ -33,6 +33,7 @@ export interface Work {
   version: number
   createdAt: string
   updatedAt: string
+  deletedAt: string | null
 }
 
 export interface Template {

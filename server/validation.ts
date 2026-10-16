@@ -12,12 +12,26 @@ export const registerSchema = z.strictObject({
 })
 export const loginSchema = z.strictObject({ username, password })
 
+const workTitle = z.string().trim().min(1, '请输入作品标题').max(80, '作品标题最多 80 个字符')
+  .regex(/^[^\u0000]*$/u, '作品标题不能包含空字符')
+const version = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+
 export const createWorkSchema = z.strictObject({
-  title: z.string().trim().min(1, '请输入作品标题').max(80, '作品标题最多 80 个字符')
-    .regex(/^[^\u0000]*$/u, '作品标题不能包含空字符'),
+  title: workTitle,
   description: z.string().max(1000, '作品说明最多 1000 个字符')
     .regex(/^[^\u0000]*$/u, '作品说明不能包含空字符'),
   config: designConfigSchema,
 })
-export const updateWorkSchema = createWorkSchema.extend({ version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) })
-export const workSearchSchema = z.strictObject({ search: z.string().trim().max(80, '搜索内容最多 80 个字符').optional() })
+export const updateWorkSchema = createWorkSchema.extend({ version })
+export const workVersionSchema = z.strictObject({ version })
+export const duplicateWorkSchema = workVersionSchema.extend({ title: workTitle.optional() })
+const positiveQueryInteger = z.string().regex(/^[1-9][0-9]*$/, '分页参数必须是正整数')
+  .transform(Number).pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER))
+export const workSearchSchema = z.strictObject({
+  search: z.string().trim().max(80, '搜索内容最多 80 个字符').default(''),
+  state: z.enum(['active', 'trash']).default('active'),
+  page: positiveQueryInteger.default(1),
+  pageSize: positiveQueryInteger.pipe(z.number().max(48, '每页最多 48 件作品')).default(12),
+}).refine(({ page, pageSize }) => Number.isSafeInteger((page - 1) * pageSize), {
+  message: '分页范围过大', path: ['page'],
+})
