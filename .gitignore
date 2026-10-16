@@ -12,6 +12,7 @@ dist-server
 
 # Local database and SQLite journals
 /data/
+/backups/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
