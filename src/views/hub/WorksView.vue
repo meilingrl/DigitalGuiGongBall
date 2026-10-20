@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import type { Work } from '../../../shared/design'
 import { useWorkCollection } from '../../composables/useWorkCollection'
 import { listDrafts, type DraftRecord } from '../../lib/drafts'
 import { useAuthStore } from '../../stores/auth'
-import DesignPreview from '../../components/DesignPreview.vue'
+import WorkThumbnail from '../../components/WorkThumbnail.vue'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
+import { loginPath } from '../../lib/journey'
 const auth = useAuthStore()
+const route = useRoute()
+const trashTarget = ref<Work | null>(null)
 let deviceStorage: Storage | undefined
 try { deviceStorage = window.localStorage } catch { /* Recovery reports unavailable storage explicitly. */ }
 const {
@@ -18,7 +22,12 @@ const draftNotice = ref('')
 function date(value: string | number) { return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function draftLink(draft: DraftRecord) { return draft.target.startsWith('new:') ? `/atelier?template=${draft.target.slice(4)}` : `/atelier/${draft.target.slice(5)}` }
 function trash(work: Work) {
-  if (window.confirm(`将「${work.title}」移入回收站？之后可以恢复，作品不会被永久删除。`)) void mutate(work, 'trash')
+  trashTarget.value = work
+}
+function confirmTrash(confirmed: boolean) {
+  const target = trashTarget.value
+  trashTarget.value = null
+  if (confirmed && target) void mutate(target, 'trash')
 }
 onMounted(() => {
   void load()
@@ -32,6 +41,7 @@ onMounted(() => {
 
 <template>
   <div class="studio-page">
+    <ConfirmDialog :open="!!trashTarget" title="移入回收站？" :message="`「${trashTarget?.title}」会保留结构与材料，之后可以恢复。`" confirm-label="移入回收站" @resolve="confirmTrash" />
     <header class="page-intro"><div><p class="eyebrow">YOUR PERSONAL COLLECTION</p><h1>我的作品<span class="title-dot">·</span></h1><p class="muted">每一重结构，都留下你的选择。</p></div><RouterLink class="primary-button" to="/hub/workshop">＋ 新建作品</RouterLink></header>
     <section v-if="drafts.length" class="draft-shelf" aria-label="此设备草稿">
       <div><h2>此设备草稿 <span>{{ drafts.length }}</span></h2><p>未保存修改或未确认请求 · 仅当前浏览器保留 7 天 · 打开后可选择恢复</p></div>
@@ -41,20 +51,20 @@ onMounted(() => {
     <div class="collection-tabs" aria-label="作品状态"><button :aria-pressed="state === 'active'" :class="{ selected: state === 'active' }" @click="setState('active')">我的作品</button><button :aria-pressed="state === 'trash'" :class="{ selected: state === 'trash' }" @click="setState('trash')">回收站</button><span>仅当前账号可见</span></div>
     <form class="works-search" @submit.prevent="submitSearch"><label class="sr-only" for="work-search">搜索我的作品</label><input id="work-search" v-model="search" placeholder="按作品名称或说明搜索…" maxlength="80" type="search" /><button class="secondary-button" type="submit" :disabled="loading">搜索作品</button><span class="muted">{{ state === 'trash' ? '回收站保留作品配置，可以随时恢复' : `共 ${pagination.total} 件服务端作品` }}</span></form>
     <p v-if="recoveryNotice" class="notice collection-notice" role="status">{{ recoveryNotice }}</p>
-    <div v-if="actionError" class="notice error collection-notice" role="alert">{{ actionError }}<p v-if="pendingAction">结果尚未确认。重试将核实同一请求，确认后才能进行下一项操作。</p><button v-if="pendingAction" class="text-button" :disabled="busy" @click="retryAction">{{ busy ? '正在确认…' : '重试确认上次操作' }}</button><button v-else class="text-button" @click="load">刷新作品版本</button><RouterLink v-if="expired" class="text-button" to="/login">重新登录</RouterLink></div>
+    <div v-if="actionError" class="notice error collection-notice" role="alert">{{ actionError }}<p v-if="pendingAction">结果尚未确认。重试将核实同一请求，确认后才能进行下一项操作。</p><button v-if="pendingAction" class="text-button" :disabled="busy" @click="retryAction">{{ busy ? '正在确认…' : '重试确认上次操作' }}</button><button v-else class="text-button" @click="load">刷新作品版本</button><RouterLink v-if="expired" class="text-button" :to="loginPath(route.fullPath)">重新登录并返回</RouterLink></div>
     <div v-if="notice" class="notice success collection-notice" role="status">{{ notice }}<RouterLink v-if="copiedId" :to="`/atelier/${copiedId}`">打开副本继续创作 →</RouterLink></div>
     <div v-if="loading" class="empty-panel" role="status">正在读取你的作品…</div>
-    <div v-else-if="error" class="empty-panel"><p class="notice error" role="alert">{{ error }}</p><RouterLink v-if="expired" class="primary-button" to="/login">重新登录</RouterLink><button v-else class="secondary-button" @click="load">重试加载</button></div>
+    <div v-else-if="error" class="empty-panel"><p class="notice error" role="alert">{{ error }}</p><RouterLink v-if="expired" class="primary-button" :to="loginPath(route.fullPath)">重新登录并返回</RouterLink><button v-else class="secondary-button" @click="load">重试加载</button></div>
     <div v-else-if="!works.length" class="empty-panel"><span class="empty-symbol">◎</span><h2>{{ search ? '没有找到匹配的作品' : state === 'trash' ? '回收站是空的' : '你的第一件玲珑，等你开启' }}</h2><p class="muted">{{ search ? '试试其他关键词。' : state === 'trash' ? '移入回收站的作品会保留结构与材质，恢复后可继续创作。' : '选一个模板，在三维工坊调整结构并保存，作品就会出现在这里。' }}</p><RouterLink v-if="state === 'active'" class="primary-button" to="/hub/workshop">浏览创作模板 →</RouterLink><button v-else class="secondary-button" @click="setState('active')">返回我的作品</button></div>
     <div v-else class="works-grid">
       <article v-for="work in works" :key="work.id" class="work-card">
-        <RouterLink v-if="state === 'active'" :to="`/atelier/${work.id}`" class="work-art" :aria-label="`打开 ${work.title}`"><DesignPreview :config="work.config" /><span class="work-open">继续创作 ↗</span></RouterLink>
-        <div v-else class="work-art trash-art"><DesignPreview :config="work.config" /><span class="trash-label">回收站</span></div>
+        <RouterLink v-if="state === 'active'" :to="`/hub/works/${work.id}`" class="work-art work-art--preview" :aria-label="`打开 ${work.title}`"><WorkThumbnail :work="work" /><span class="work-open">查看作品 ↗</span></RouterLink>
+        <div v-else class="work-art work-art--preview trash-art"><WorkThumbnail :work="work" /><span class="trash-label">回收站</span></div>
         <div class="work-copy">
-          <div class="card-title"><h2><RouterLink v-if="state === 'active'" :to="`/atelier/${work.id}`">{{ work.title }}</RouterLink><span v-else>{{ work.title }}</span></h2><span>v{{ work.version }}</span></div>
+          <div class="card-title"><h2><RouterLink v-if="state === 'active'" :to="`/hub/works/${work.id}`">{{ work.title }}</RouterLink><span v-else>{{ work.title }}</span></h2><span>v{{ work.version }}</span></div>
           <p>{{ work.description || '尚未添加创作说明' }}</p>
           <div class="work-meta"><span>{{ work.config.layers }} 层 · {{ work.config.material === 'ivory' ? '暖瓷' : work.config.material === 'jade' ? '青玉' : '古铜' }}</span><time :datetime="work.updatedAt">{{ date(work.updatedAt) }}</time></div>
-          <div class="work-actions"><template v-if="state === 'active'"><button class="text-button" :disabled="busy || !!pendingAction" :aria-label="`复制 ${work.title}`" @click="mutate(work, 'duplicate')">复制作品</button><button class="text-button muted" :disabled="busy || !!pendingAction" :aria-label="`将 ${work.title} 移入回收站`" @click="trash(work)">移入回收站</button></template><button v-else class="text-button" :disabled="busy || !!pendingAction" :aria-label="`恢复 ${work.title}`" @click="mutate(work, 'restore')">恢复作品 →</button></div>
+          <div class="work-actions"><template v-if="state === 'active'"><RouterLink class="text-button" :to="`/atelier/${work.id}`">继续创作 ↗</RouterLink><button class="text-button" :disabled="busy || !!pendingAction" :aria-label="`复制 ${work.title}`" @click="mutate(work, 'duplicate')">复制作品</button><button class="text-button muted" :disabled="busy || !!pendingAction" :aria-label="`将 ${work.title} 移入回收站`" @click="trash(work)">移入回收站</button></template><button v-else class="text-button" :disabled="busy || !!pendingAction" :aria-label="`恢复 ${work.title}`" @click="mutate(work, 'restore')">恢复作品 →</button></div>
         </div>
       </article>
     </div>

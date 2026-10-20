@@ -1,10 +1,12 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defaultConfigs, templates, type DesignConfig, type Work } from '../../shared/design'
+import { findInspiration, type InspirationId } from '../../shared/inspirations'
 import { api, ApiError, errorMessage, isDefinitiveWriteRejection, type ApiOptions } from '../lib/api'
 import { cloneDesign } from '../lib/draft'
 import { readDraft, removeDraft, writeDraft, type DraftRecord, type PendingSave, type StorageLike } from '../lib/drafts'
+import { readCreationConfig } from '../lib/journey'
 
-type Source = { workId?: string; templateId?: string }
+type Source = { workId?: string; templateId?: string; inspirationId?: string; designJson?: string }
 type WorkRequest = (path: string, options?: ApiOptions) => Promise<{ work: Work }>
 interface Options {
   userId: string
@@ -13,6 +15,7 @@ interface Options {
   request?: WorkRequest
   storage?: StorageLike
   now?: () => number
+  onSaved?(work: Work): void
 }
 
 // Owns the document lifecycle independently of the renderer and router. A recovery
@@ -23,6 +26,7 @@ export function useAtelierDocument(options: Options) {
   const config = ref<DesignConfig>(cloneDesign(defaultConfigs.linglong))
   const title = ref('')
   const description = ref('')
+  const inspirationId = ref<InspirationId | null>(null)
   const work = ref<Work | null>(null)
   const baseVersion = ref<number | null>(null)
   const loading = ref(true)
@@ -37,7 +41,7 @@ export function useAtelierDocument(options: Options) {
   const localDraftAt = ref<number | null>(null)
   const recovery = ref<DraftRecord | null>(null)
   const pendingSave = ref<PendingSave | null>(null)
-  const snapshot = computed(() => JSON.stringify({ title: title.value, description: description.value, config: config.value }))
+  const snapshot = computed(() => JSON.stringify({ title: title.value, description: description.value, config: config.value, ...(inspirationId.value ? { inspirationId: inspirationId.value } : {}) }))
   const dirty = computed(() => !loading.value && !loadError.value && (snapshot.value !== baseline.value || pendingSave.value !== null))
   const target = computed(() => work.value ? `work:${work.value.id}` : `new:${config.value.templateId}`)
   let generation = 0
@@ -61,6 +65,7 @@ export function useAtelierDocument(options: Options) {
     const result = writeDraft(options.storage, {
       schemaVersion: 1, userId: options.userId, target: target.value,
       title: title.value, description: description.value, config: config.value,
+      ...(inspirationId.value ? { inspirationId: inspirationId.value } : {}),
       baseVersion: baseVersion.value, updatedAt, pendingSave: pendingSave.value,
     }, updatedAt)
     if (result.ok) {
@@ -89,13 +94,15 @@ export function useAtelierDocument(options: Options) {
         if (current !== generation) return
         work.value = result.work
         title.value = result.work.title; description.value = result.work.description
+        inspirationId.value = result.work.inspirationId ?? null
         config.value = cloneDesign(result.work.config)
         baseVersion.value = result.work.version
       } else {
         const chosen = templates.find(item => item.id === source.templateId) ?? templates[0]
         work.value = null; baseVersion.value = null
         title.value = `${chosen.name} · 我的创作`; description.value = ''
-        config.value = cloneDesign(chosen.config)
+        config.value = readCreationConfig(chosen.id, source.designJson) ?? cloneDesign(chosen.config)
+        inspirationId.value = findInspiration(source.inspirationId)?.id ?? null
       }
       baseline.value = snapshot.value
       const stored = readDraft(options.storage, options.userId, target.value, now())
@@ -115,6 +122,7 @@ export function useAtelierDocument(options: Options) {
     applying = true
     title.value = record.title; description.value = record.description
     config.value = cloneDesign(record.config)
+    inspirationId.value = record.inspirationId ?? null
     baseVersion.value = record.baseVersion
     pendingSave.value = record.pendingSave
     localDraftAt.value = record.updatedAt
@@ -144,7 +152,7 @@ export function useAtelierDocument(options: Options) {
       pendingSave.value = {
         key: crypto.randomUUID(), method: work.value ? 'PUT' : 'POST',
         path: work.value ? `/api/works/${encodeURIComponent(work.value.id)}` : '/api/works',
-        body: { title: title.value.trim(), description: description.value.trim(), config: cloneDesign(config.value), ...(work.value ? { version: baseVersion.value! } : {}) },
+        body: { title: title.value.trim(), description: description.value.trim(), config: cloneDesign(config.value), ...(inspirationId.value ? { inspirationId: inspirationId.value } : {}), ...(work.value ? { version: baseVersion.value! } : {}) },
         snapshot: snapshot.value,
       }
     }
@@ -160,6 +168,7 @@ export function useAtelierDocument(options: Options) {
       if (snapshot.value === attempt.snapshot) {
         title.value = result.work.title; description.value = result.work.description
         config.value = cloneDesign(result.work.config)
+        inspirationId.value = result.work.inspirationId ?? null
         baseline.value = snapshot.value
       }
       pendingSave.value = null
@@ -169,6 +178,9 @@ export function useAtelierDocument(options: Options) {
       // removing the old recovery key. A failed write leaves the old copy intact.
       const persisted = persistDraft()
       if (oldTarget !== target.value && (!dirty.value || persisted)) remove(oldTarget)
+      // Preview generation is optional. An image callback cannot invalidate a
+      // database acknowledgment or resurrect the already confirmed request.
+      try { options.onSaved?.(result.work) } catch { /* The preview owner reports its own errors. */ }
       if (creating) {
         redirecting.value = true
         try { await options.replaceWorkId(result.work.id) }
@@ -195,7 +207,7 @@ export function useAtelierDocument(options: Options) {
   }, { flush: 'sync' })
   onScopeDispose(() => { persistDraft(); disposed = true; generation++ })
   return {
-    config, title, description, work, loading, loadError, saveError, saveState, baseline,
+    config, title, description, inspirationId, work, loading, loadError, saveError, saveState, baseline,
     conflict, expired, redirecting, dirty, recovery, draftNotice, localDraftAt, pendingSave,
     load, save, restoreDraft, discardDraft, persistDraft,
   }

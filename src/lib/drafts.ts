@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { designConfigSchema, type DesignConfig } from '../../shared/design'
+import { inspirationIdSchema, type InspirationId } from '../../shared/inspirations'
 
 /** The browser adapter is injected so unavailable/blocked storage never crashes editing. */
 export interface StorageLike {
@@ -14,7 +15,7 @@ export interface PendingSave {
   key: string
   method: 'POST' | 'PUT'
   path: string
-  body: { title: string; description: string; config: DesignConfig; version?: number }
+  body: { title: string; description: string; config: DesignConfig; inspirationId?: InspirationId | null; version?: number }
   snapshot: string
 }
 
@@ -25,6 +26,7 @@ export interface DraftRecord {
   title: string
   description: string
   config: DesignConfig
+  inspirationId?: InspirationId | null
   baseVersion: number | null
   updatedAt: number
   pendingSave: PendingSave | null
@@ -48,7 +50,7 @@ const versionSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 const timestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const titleSchema = z.string().max(80).regex(/^[^\u0000]*$/u)
 const descriptionSchema = z.string().max(1000).regex(/^[^\u0000]*$/u)
-const snapshotSchema = z.strictObject({ title: titleSchema, description: descriptionSchema, config: designConfigSchema })
+const snapshotSchema = z.strictObject({ title: titleSchema, description: descriptionSchema, config: designConfigSchema, inspirationId: inspirationIdSchema.nullable().optional() })
 const bodySchema = snapshotSchema.extend({ title: titleSchema.refine(title => title.trim().length > 0) })
 const requestFields = {
   key: z.string().uuid(),
@@ -62,6 +64,7 @@ const pendingSchema = z.discriminatedUnion('method', [
 const recordSchema = z.strictObject({
   schemaVersion: z.literal(1), userId: userIdSchema, target: targetSchema,
   title: titleSchema, description: descriptionSchema, config: designConfigSchema,
+  inspirationId: inspirationIdSchema.nullable().optional(),
   baseVersion: versionSchema.nullable(), updatedAt: timestampSchema, pendingSave: pendingSchema.nullable(),
 })
 
@@ -102,7 +105,8 @@ function parseRecord(input: unknown, userId: string, target: string, now: number
     try { snapshot = snapshotSchema.parse(JSON.parse(request.snapshot)) } catch { return null }
     // Keep the raw snapshot for dirty tracking, but compare to the normalized API body.
     if (snapshot.title.trim() !== request.body.title || snapshot.description.trim() !== request.body.description
-      || JSON.stringify(snapshot.config) !== JSON.stringify(request.body.config)) return null
+      || JSON.stringify(snapshot.config) !== JSON.stringify(request.body.config)
+      || (snapshot.inspirationId ?? null) !== (request.body.inspirationId ?? null)) return null
   }
   return value
 }

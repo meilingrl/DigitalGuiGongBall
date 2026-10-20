@@ -251,6 +251,53 @@ test('device storage failures stay visible while real server saves remain availa
   } finally { h.unmount() }
 })
 
+test('a culture entry is persisted with the work and restored from the server rather than the URL', async () => {
+  const scope = effectScope()
+  const storage = new MemoryStorage()
+  let stored = { ...originalWork, inspirationId: 'openwork-rhythm', previewVersion: null } as Work
+  const seen: unknown[] = []
+  let existing = false
+  const editor = scope.run(() => useAtelierDocument({
+    userId: 'user-a', storage,
+    source: () => existing ? { workId: stored.id, inspirationId: 'nested-structure' } : { templateId: 'ruyi', inspirationId: 'openwork-rhythm' },
+    replaceWorkId: async () => {},
+    onSaved: value => { seen.push(value) },
+    request: async (_path, options) => {
+      if (options?.method) stored = { ...stored, ...(options.body as object) }
+      return { work: stored }
+    },
+  }))!
+  try {
+    await editor.load()
+    assert.equal(editor.inspirationId.value, 'openwork-rhythm')
+    await editor.save()
+    assert.equal(stored.inspirationId, 'openwork-rhythm')
+    assert.equal(seen.length, 1)
+    existing = true
+    await editor.load()
+    assert.equal(editor.inspirationId.value, 'openwork-rhythm', 'URL cannot overwrite saved provenance')
+  } finally { scope.stop() }
+})
+
+test('legacy pending payload and snapshot survive recovery without injecting a new metadata field', async () => {
+  const { writeDraft } = await import('../src/lib/drafts.js')
+  const h = await createEditor(false)
+  h.unmount()
+  const body = { title: '旧版请求', description: '', config: cloneDesign(defaultConfigs.linglong) }
+  const attempt = { key: '438906ae-6796-4936-afc5-502744c91632', method: 'POST' as const, path: '/api/works', body, snapshot: JSON.stringify(body) }
+  assert.equal(writeDraft(h.storage, { schemaVersion: 1, userId: 'user-a', target: 'new:linglong', ...body, baseVersion: null, updatedAt: Date.now(), pendingSave: attempt }).ok, true)
+  const restored = await createEditor(false, h.storage)
+  try {
+    restored.editor.restoreDraft()
+    const retry = restored.editor.save()
+    assert.deepEqual(restored.mutations[0]!.body, body)
+    assert.equal('inspirationId' in restored.mutations[0]!.body, false)
+    restored.settleSuccess()
+    await retry
+    assert.equal(restored.editor.dirty.value, false)
+  } finally { restored.unmount() }
+})
+
 test('the editor keeps retention cleanup visible after evicting a device draft, including later edits', async () => {
   const { writeDraft } = await import('../src/lib/drafts.js')
   const storage = new MemoryStorage()

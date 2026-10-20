@@ -35,7 +35,7 @@ const styleColor = computed(() => ({
 
 function startCarving() {
   store.selectTemplate(props.item.id)
-  router.push('/atelier')
+  router.push(`/hub/workshop?legacy=${encodeURIComponent(props.item.id)}#templates`)
 }
 
 function fmt(n: number) {
@@ -129,7 +129,7 @@ function fmt(n: number) {
       type="button"
       @click="startCarving"
     >
-      {{ store.t.start }}
+      {{ store.locale === 'zh' ? '选用当前可创作模板 →' : 'Choose an available template →' }}
     </button>
   </article>
 </template>

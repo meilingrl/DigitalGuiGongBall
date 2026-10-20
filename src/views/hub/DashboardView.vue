@@ -116,11 +116,11 @@ function friendActivity(f: (typeof friends)[0]) {
         </p>
       </div>
       <RouterLink
-        :to="{ name: 'atelier' }"
+        :to="{ name: 'hub-workshop', query: { legacy: lastSession?.templateId }, hash: '#templates' }"
         class="shrink-0 rounded-xl bg-teal-700 px-[var(--space-md)] py-[var(--space-xs)] text-fluid-sm font-medium text-white hover:bg-teal-800 transition"
         @click="store.selectTemplate(lastSession!.templateId)"
       >
-        {{ store.locale === 'zh' ? '继续雕刻' : 'Resume' }}
+        {{ store.locale === 'zh' ? '选择真实创作模板' : 'Choose an available template' }}
       </RouterLink>
     </div>
 
@@ -188,9 +188,9 @@ function friendActivity(f: (typeof friends)[0]) {
             <RouterLink
               v-for="s in recentSessions.slice(0, 3)"
               :key="s.id"
-              :to="{ name: 'atelier' }"
+              :to="{ name: 'hub-workshop', query: { legacy: s.templateId }, hash: '#templates' }"
               class="flex items-center gap-[var(--space-md)] rounded-xl border border-slate-100 bg-white px-[var(--space-md)] py-[var(--space-sm)] transition hover:border-teal-200 hover:bg-teal-50/30 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-teal-800 dark:hover:bg-teal-950/20"
-              :title="store.locale === 'zh' ? '进入工房打开该模板' : 'Open this template in Atelier'"
+              :title="store.locale === 'zh' ? '课程模拟记录：选择当前可创作的模板' : 'Course sample: choose an available template'"
               @click="store.selectTemplate(s.templateId)"
             >
               <div class="h-8 w-8 shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-fluid-sm dark:bg-slate-800">

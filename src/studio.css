@@ -98,6 +98,19 @@
 .work-copy>p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:10px 0 20px; }
 .work-meta { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--studio-line); padding-top:14px; font-size:10px; color:var(--studio-muted); }
 .collection-foot { margin-top:35px; color:var(--studio-muted); font-size:11px; text-align:center; }
+.work-art.work-art--preview { padding:0; }
+.work-actions { flex-wrap:wrap; }
+.work-open { z-index:1; padding:6px 9px; background:var(--studio-panel); border-radius:3px; }
+.template-study-link { display:block; margin-bottom:18px; }
+.workshop-legacy-note { margin-bottom:25px; }
+.login-intent { margin-top:15px; font-size:11px; line-height:1.8; color:var(--studio-gold); }
+.login-explore { display:block; margin-top:20px; text-align:center; }
+.atelier-inspiration { margin-top:24px; padding-bottom:20px; border-bottom:1px solid var(--studio-line); }
+.atelier-inspiration>a { display:inline-block; margin-top:9px; font-size:13px; }
+.atelier-inspiration>p:last-child { margin-top:9px; color:var(--studio-muted); font-size:10px; }
+.atelier-save-result { margin-top:20px; }
+.studio-footer .legacy-menu>div { top:auto; bottom:28px; }
+.studio-footer p { margin-top:10px; font-size:10px; }
 .legacy-content { padding:30px 4% 60px; }
 .legacy-banner,.museum-banner { padding:12px 5%; background:var(--studio-tint); color:var(--studio-muted); font-size:11px; line-height:1.7; }
 .legacy-banner a,.museum-banner button { margin-left:14px; color:var(--studio-accent); }
