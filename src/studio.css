@@ -102,6 +102,10 @@
 .work-actions { flex-wrap:wrap; }
 .work-open { z-index:1; padding:6px 9px; background:var(--studio-panel); border-radius:3px; }
 .template-study-link { display:block; margin-bottom:18px; }
+.template-art.template-art--render { padding:0; aspect-ratio:4/3; }
+.template-art--render img { width:100%; height:100%; object-fit:cover; display:block; }
+.template-art--render .card-number { z-index:1; }
+.template-art--render .material-tag { background:#fffdf8dc; color:#655f51; padding:4px 7px; border-radius:3px; }
 .workshop-legacy-note { margin-bottom:25px; }
 .login-intent { margin-top:15px; font-size:11px; line-height:1.8; color:var(--studio-gold); }
 .login-explore { display:block; margin-top:20px; text-align:center; }

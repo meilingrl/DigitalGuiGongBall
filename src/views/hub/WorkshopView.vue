@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { api, errorMessage } from '../../lib/api'
 import type { Template } from '../../../shared/design'
-import DesignPreview from '../../components/DesignPreview.vue'
 import { useAuthStore } from '../../stores/auth'
 import { inspirations } from '../../../shared/inspirations'
 import { templates as courseTemplates } from '../../data/content'
@@ -33,7 +32,7 @@ onMounted(load)
     <section id="templates" class="template-section"><div class="section-heading"><div><p class="eyebrow">CHOOSE YOUR STARTING POINT</p><h2>从一个纹样开始</h2></div><p class="muted">模板只是起点，结构由你定义。</p></div>
       <div v-if="loading" class="empty-panel" role="status">正在从后端读取模板…</div>
       <div v-else-if="error" class="notice error" role="alert">{{ error }}<button class="secondary-button" @click="load">重试加载</button></div>
-      <div v-else class="template-grid"><article v-for="(item, index) in templates" :key="item.id" class="template-card"><div class="template-art"><span class="card-number">0{{ index + 1 }}</span><DesignPreview :config="item.config" /><span class="material-tag">{{ item.subtitle }}</span></div><div class="template-copy"><div class="card-title"><h3>{{ item.name }}</h3><span>{{ item.config.layers }} 层</span></div><p>{{ item.description }}</p><RouterLink class="template-study-link text-button" :to="`/hub/studies/${inspirations.find(study => study.templateId === item.id)?.id}`">先看看结构与文化导览 →</RouterLink><RouterLink class="template-link" :to="`/atelier?template=${item.id}`">以此开始 <span>↗</span></RouterLink></div></article></div>
+      <div v-else class="template-grid"><article v-for="(item, index) in templates" :key="item.id" class="template-card"><div class="template-art template-art--render"><span class="card-number">0{{ index + 1 }}</span><img :src="`/materials/workshop/previews/workshop-${item.id}-v1.0.png`" :alt="`${item.name}模板 · ${item.config.layers}层默认结构的三维实景`" loading="lazy" /><span class="material-tag">{{ item.subtitle }}</span></div><div class="template-copy"><div class="card-title"><h3>{{ item.name }}</h3><span>{{ item.config.layers }} 层</span></div><p>{{ item.description }}</p><RouterLink class="template-study-link text-button" :to="`/hub/studies/${inspirations.find(study => study.templateId === item.id)?.id}`">先看看结构与文化导览 →</RouterLink><RouterLink class="template-link" :to="`/atelier?template=${item.id}`">以此开始 <span>↗</span></RouterLink></div></article></div>
     </section>
     <aside class="craft-note"><span class="note-seal">艺</span><div><h3>以数字理解工艺，以创作致敬传承。</h3><p>鬼工球以层层套叠、可独立转动的镂空球体见长。本工坊用原创程序化纹样探索这一结构，数字作品不等同于传统实物雕刻，也不涉及真实象牙材料。</p><RouterLink to="/hub/museum" class="text-button">走进文化展馆 →</RouterLink></div></aside>
   </div>

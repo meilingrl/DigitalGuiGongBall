@@ -90,3 +90,9 @@
 - **商城商品图**：`public/materials/mall/products/*.webp`（与 `src/data/mall.ts` 中 `image` 字段对应）
 - **旗舰鬼工球 GLB**：`src/assets/materials/models/museum-model-guigong-flagship-main-v1.0.glb`，元数据 `documents/museum-model-guigong-flagship-main-v1.0.md`
 - **原器预览用 Blender 源**：`src/assets/materials/models/museum-model-guigong-original-optimized-preview-v1.0.blend`（及可选 `.blend1` 备份），由 `tools/blender/generate_original_optimized_preview.py` 等脚本维护
+
+## 9) 文化与创作整合新增（2026-10-21）
+
+- `public/materials/workshop/previews/workshop-{linglong,ruyi,lianhua}-v1.0.png`：由本仓库 Three.js 原创几何、默认设计配置、浅色舞台通过 `AtelierStage.exportPreview` 在浏览器实际渲染得到的 480×360 PNG。用于模板卡片与未改动的本地演示种子作品；不包含用户文字或私人资产，不是历史实物照片。无新增第三方模型或生图服务。
+- `public/materials/museum/studies/museum-study-{layers,patterns}-v1.0.webp`：原课程 `museum-gallery-02/03-v1.0.png` 的网页派生图，最长边 1100 像素、WebP quality 86。原 PNG 原样保留，存档页继续使用原资源。课程原图来源与许可沿用历史记录，未获得新的第三方授权，也不把它们当作本文所引博物馆藏品图。
+- 导览事实来源链接位于 `src/data/studies.ts` 并随正文显示；图像标注与引用藏品明确分开。

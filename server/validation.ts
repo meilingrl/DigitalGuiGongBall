@@ -29,7 +29,7 @@ export const workVersionSchema = z.strictObject({ version })
 export const duplicateWorkSchema = workVersionSchema.extend({ title: workTitle.optional() })
 const positiveQueryInteger = z.string().regex(/^[1-9][0-9]*$/, '分页参数必须是正整数')
   .transform(Number).pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER))
-export const workPreviewQuerySchema = z.strictObject({ version: positiveQueryInteger })
+export const workPreviewQuerySchema = z.strictObject({ version: positiveQueryInteger, r: z.string().uuid().optional() })
 export const workPreviewSchema = z.strictObject({ version, imageDataUrl: z.string().max(350000) })
 export const workSearchSchema = z.strictObject({
   search: z.string().trim().max(80, '搜索内容最多 80 个字符').default(''),

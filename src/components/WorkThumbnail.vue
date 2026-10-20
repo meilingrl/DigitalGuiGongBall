@@ -4,9 +4,12 @@ import type { Work } from '../../shared/design'
 import DesignPreview from './DesignPreview.vue'
 const props = defineProps<{ work: Work }>()
 const failed = ref(false)
+const revision = ref(crypto.randomUUID())
 const current = computed(() => props.work.previewVersion === props.work.version && !failed.value)
-const url = computed(() => `/api/works/${encodeURIComponent(props.work.id)}/preview?version=${props.work.version}`)
-watch(() => `${props.work.id}:${props.work.version}:${props.work.previewVersion}`, () => { failed.value = false })
+// WebKit may reuse an already decoded image for an unchanged URL even with
+// no-store. A fresh view/ack must request fresh bytes after same-version updates.
+const url = computed(() => `/api/works/${encodeURIComponent(props.work.id)}/preview?version=${props.work.version}&r=${revision.value}`)
+watch(() => `${props.work.id}:${props.work.version}:${props.work.previewVersion}`, () => { failed.value = false; revision.value = crypto.randomUUID() })
 </script>
 
 <template>

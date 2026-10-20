@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import nestedImage from '../../assets/materials/images/museum/gallery/museum-gallery-02-v1.0.png'
-import openworkImage from '../../assets/materials/images/museum/gallery/museum-gallery-03-v1.0.png'
 import type { Study } from '../../data/studies'
 
 defineProps<{ kind: Study['image']; caption?: boolean; eager?: boolean }>()
 const images = {
-  nested: { src: nestedImage, alt: '课程原有参考图：开孔球体及其内部层次', label: '课程原有参考图 · 用于观察层次' },
-  openwork: { src: openworkImage, alt: '课程原有参考图：花卉浮雕与内部星形镂空', label: '课程原有参考图 · 用于观察纹样' },
+  nested: { src: '/materials/museum/studies/museum-study-layers-v1.0.webp', alt: '课程原有参考图：开孔球体及其内部层次', label: '课程原有参考图 · 用于观察层次' },
+  openwork: { src: '/materials/museum/studies/museum-study-patterns-v1.0.webp', alt: '课程原有参考图：花卉浮雕与内部星形镂空', label: '课程原有参考图 · 用于观察纹样' },
   digital: { src: '/materials/museum/exhibitions/1.webp', alt: '课程原有概念图：展柜中的多层镂空球体', label: '课程原有概念图 · 非真实展览记录' },
 }
 </script>
