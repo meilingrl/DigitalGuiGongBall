@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, rmdirSync, statSync, unlinkSync } from 'node:fs'
 import { dirname, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openDatabase, SCHEMA_VERSION } from '../database.js'
+import { openDatabase, SCHEMA_VERSION, V2_MIGRATION } from '../database.js'
 
 export type MaintenanceCode = 'INVALID_ARGUMENT' | 'UNSAFE_PATH' | 'SOURCE_MISSING' | 'SAME_PATH' | 'TARGET_EXISTS' | 'INVALID_DATABASE' | 'UNSUPPORTED_SCHEMA' | 'IO_ERROR'
 
@@ -128,10 +128,13 @@ function schemaSignature(db: DatabaseSync): string {
 function knownSchemas(): Map<string, number> {
   const current = openDatabase(':memory:')
   const legacy = new DatabaseSync(':memory:', { allowExtension: false })
+  const v2 = new DatabaseSync(':memory:', { allowExtension: false })
   try {
     legacy.exec(legacySchema)
-    return new Map([[schemaSignature(legacy), 1], [schemaSignature(current), SCHEMA_VERSION]])
-  } finally { current.close(); legacy.close() }
+    v2.exec(legacySchema)
+    v2.exec(V2_MIGRATION)
+    return new Map([[schemaSignature(legacy), 1], [schemaSignature(v2), 2], [schemaSignature(current), SCHEMA_VERSION]])
+  } finally { current.close(); legacy.close(); v2.close() }
 }
 
 function validateDatabase(db: DatabaseSync): number {

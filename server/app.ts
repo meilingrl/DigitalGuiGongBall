@@ -6,7 +6,7 @@ import { createSessions, hashPassword, publicUser, verifyPassword } from './auth
 import { openDatabase } from './database.js'
 import { ApiError, errorHandler } from './errors.js'
 import { authRateLimiter } from './rate-limit.js'
-import { createWorkSchema, duplicateWorkSchema, loginSchema, registerSchema, updateWorkSchema, workSearchSchema, workVersionSchema } from './validation.js'
+import { createWorkSchema, duplicateWorkSchema, loginSchema, registerSchema, updateWorkSchema, workSearchSchema, workVersionSchema, workPreviewSchema, workPreviewQuerySchema } from './validation.js'
 import { executeMutation, parseIdempotencyKey } from './idempotency.js'
 import { createWorks } from './works.js'
 
@@ -51,6 +51,7 @@ export function createApp(options: AppOptions) {
     }
     next()
   })
+  app.put('/api/works/:id/preview', express.json({ limit: '384kb', strict: true }))
   app.use('/api', express.json({ limit: '16kb', strict: true }))
   app.get('/api/health', (_request, response) => {
     db.prepare('SELECT 1').get()
@@ -111,6 +112,18 @@ export function createApp(options: AppOptions) {
     const user = sessions.require(request)
     const input = createWorkSchema.parse(request.body)
     mutate(request, response, user.id, input, 201, () => works.create(user.id, input))
+  })
+  app.put('/api/works/:id/preview', (request, response) => {
+    const user = sessions.require(request)
+    const input = workPreviewSchema.parse(request.body)
+    response.json({ work: works.savePreview(user.id, String(request.params.id), input.version, input.imageDataUrl) })
+  })
+  app.get('/api/works/:id/preview', (request, response) => {
+    const user = sessions.require(request)
+    const { version } = workPreviewQuerySchema.parse(request.query)
+    const bytes = works.preview(user.id, String(request.params.id), version)
+    response.setHeader('Cache-Control', 'private, no-store')
+    response.type('image/png').send(bytes)
   })
   app.get('/api/works/:id', (request, response) => {
     const user = sessions.require(request)

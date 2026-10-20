@@ -257,7 +257,7 @@ test('rejects corrupt and unknown SQLite sources with no partial target or unrel
   }
 })
 
-test('migrates only a known v1 snapshot into the new restored file', async (t) => {
+for (const version of [1, 2]) test(`migrates a known v${version} snapshot into the new restored file`, async (t) => {
   const root = directory(t)
   const from = join(root, 'v1.sqlite')
   const legacy = new DatabaseSync(from)
@@ -271,16 +271,29 @@ test('migrates only a known v1 snapshot into the new restored file', async (t) =
     CREATE INDEX works_owner_updated_idx ON works(owner_id, updated_at DESC);
     INSERT INTO schema_migrations VALUES(1, '2026-10-16T00:00:00.000Z');
   `)
+  if (version === 2) legacy.exec(`
+    ALTER TABLE works ADD COLUMN deleted_at TEXT;
+    DROP INDEX IF EXISTS works_owner_updated_idx;
+    CREATE INDEX works_owner_state_updated_idx ON works(owner_id, deleted_at, updated_at DESC, id DESC);
+    CREATE TABLE mutation_journal (
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      key TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, body_hash TEXT NOT NULL,
+      status INTEGER NOT NULL CHECK(status BETWEEN 200 AND 299), response_json TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY(owner_id, key)
+    );
+    INSERT INTO schema_migrations VALUES(2, '2026-10-16T00:00:00.000Z');
+  `)
   populate(legacy)
   legacy.close()
   const before = readFileSync(from)
-  const { restoreDatabase } = await maintenance()
+  const { backupDatabase, restoreDatabase } = await maintenance()
+  assert.equal(backupDatabase({ from, to: join(root, `v${version}-copy.sqlite`) }).schemaVersion, version)
   const to = join(root, 'restored.sqlite')
   const result = restoreDatabase({ from, to })
-  assert.equal(result.schemaVersion, 2)
+  assert.equal(result.schemaVersion, 3)
   const restored = new DatabaseSync(to, { readOnly: true })
   try {
-    assert.deepEqual(restored.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version), [1, 2])
+    assert.deepEqual(restored.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version), [1, 2, 3])
     assert.equal(restored.prepare('SELECT title,deleted_at FROM works').get()!.deleted_at, null)
     assert.equal(restored.prepare('SELECT count(*) AS n FROM sessions').get()!.n, 0)
     assert.equal(restored.prepare('SELECT count(*) AS n FROM mutation_journal').get()!.n, 0)

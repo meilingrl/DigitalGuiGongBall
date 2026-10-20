@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { InspirationId } from './inspirations.js'
 
 export const templateIdSchema = z.enum(['linglong', 'ruyi', 'lianhua'])
 export const designConfigSchema = z.strictObject({
@@ -34,6 +35,8 @@ export interface Work {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  inspirationId: InspirationId | null
+  previewVersion: number | null
 }
 
 export interface Template {

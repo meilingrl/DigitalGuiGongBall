@@ -31,7 +31,7 @@ export async function workFixture(t: TestContext, options: Partial<AppOptions> =
   }
   await open()
   t.after(async () => { await close(); await rm(directory, { recursive: true, force: true }) })
-  async function request(path: string, options: { method?: string; body?: unknown; cookie?: string; key?: string; expectedUserId?: string } = {}) {
+  async function rawRequest(path: string, options: { method?: string; body?: unknown; cookie?: string; key?: string; expectedUserId?: string } = {}) {
     const headers: Record<string, string> = { Origin: origin }
     if (options.cookie) headers.Cookie = options.cookie
     if (options.key !== undefined) headers['Idempotency-Key'] = options.key
@@ -41,11 +41,15 @@ export async function workFixture(t: TestContext, options: Partial<AppOptions> =
       method: options.method ?? 'GET', headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
+    return response
+  }
+  async function request(...args: Parameters<typeof rawRequest>) {
+    const response = await rawRequest(...args)
     const text = await response.text()
     return { status: response.status, headers: response.headers, data: text ? JSON.parse(text) : null }
   }
   return {
-    dbPath, request,
+    dbPath, request, rawRequest,
     async restart() { await close(); await open() },
     async signup(username = 'artisan') {
       const response = await request('/api/auth/register', {

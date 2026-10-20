@@ -8,7 +8,7 @@ import * as database from '../database.js'
 import { hashPassword, verifyPassword } from '../auth.js'
 import { workFixture, workInput } from './work-fixture.js'
 
-test('schema v2 initializes empty files and migrates a real v1 database without resetting passwords or works', async (t) => {
+test('schema v3 initializes empty files and migrates a real v1 database without resetting passwords or works', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'guigong-v1-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
   const path = join(directory, 'v1.sqlite')
@@ -31,6 +31,8 @@ test('schema v2 initializes empty files and migrates a real v1 database without 
   try {
     const work = db.prepare('SELECT * FROM works WHERE id = ?').get('old-work')!
     assert.equal(work.deleted_at, null)
+    assert.equal(work.inspiration_id, null)
+    assert.equal(work.preview_version, null)
     assert.equal(work.version, 7)
     assert.equal(work.title, workInput.title)
     assert.deepEqual(JSON.parse(String(work.config_json)), workInput.config)
@@ -38,14 +40,14 @@ test('schema v2 initializes empty files and migrates a real v1 database without 
     const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get('old-user')!
     assert.equal(user.password_hash, passwordHash)
     assert.equal(await verifyPassword('original-password', String(user.password_hash)), true)
-    assert.deepEqual(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version), [1, 2])
-    assert.equal((database as Record<string, unknown>).SCHEMA_VERSION, 2)
+    assert.deepEqual(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version), [1, 2, 3])
+    assert.equal((database as Record<string, unknown>).SCHEMA_VERSION, 3)
   } finally { db.close() }
   db = database.openDatabase(path)
-  try { assert.equal(db.prepare('SELECT count(*) AS n FROM schema_migrations').get()!.n, 2) } finally { db.close() }
+  try { assert.equal(db.prepare('SELECT count(*) AS n FROM schema_migrations').get()!.n, 3) } finally { db.close() }
   db = database.openDatabase(join(directory, 'new.sqlite'))
   try {
-    assert.equal(db.prepare('SELECT max(version) AS version FROM schema_migrations').get()!.version, 2)
+    assert.equal(db.prepare('SELECT max(version) AS version FROM schema_migrations').get()!.version, 3)
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mutation_journal'").get())
   } finally { db.close() }
 })

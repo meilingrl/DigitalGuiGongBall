@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { designConfigSchema } from '../shared/design.js'
+import { inspirationIdSchema } from '../shared/inspirations.js'
 
 const username = z.string().trim().min(3, '用户名需要 3–32 个字符').max(32, '用户名需要 3–32 个字符')
   .regex(/^[a-zA-Z0-9_]+$/, '用户名只能使用英文字母、数字和下划线').transform((value) => value.toLowerCase())
@@ -21,12 +22,15 @@ export const createWorkSchema = z.strictObject({
   description: z.string().max(1000, '作品说明最多 1000 个字符')
     .regex(/^[^\u0000]*$/u, '作品说明不能包含空字符'),
   config: designConfigSchema,
+  inspirationId: inspirationIdSchema.nullable().optional(),
 })
 export const updateWorkSchema = createWorkSchema.extend({ version })
 export const workVersionSchema = z.strictObject({ version })
 export const duplicateWorkSchema = workVersionSchema.extend({ title: workTitle.optional() })
 const positiveQueryInteger = z.string().regex(/^[1-9][0-9]*$/, '分页参数必须是正整数')
   .transform(Number).pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER))
+export const workPreviewQuerySchema = z.strictObject({ version: positiveQueryInteger })
+export const workPreviewSchema = z.strictObject({ version, imageDataUrl: z.string().max(350000) })
 export const workSearchSchema = z.strictObject({
   search: z.string().trim().max(80, '搜索内容最多 80 个字符').default(''),
   state: z.enum(['active', 'trash']).default('active'),
