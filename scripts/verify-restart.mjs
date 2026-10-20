@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
+
+// A real PNG transport fixture; browser checks separately verify image/config correspondence.
+// Resolve required input before allocating a temporary database directory.
+const png = await readFile('public/materials/workshop/previews/workshop-lianhua-v1.0.png')
+const imageDataUrl = `data:image/png;base64,${png.toString('base64')}`
 
 // Separate process + separate database: never use the developer's demonstration data.
 const directory = await mkdtemp(join(tmpdir(), 'guigong-restart-'))
@@ -18,6 +23,12 @@ let ended
 let output = ''
 let expectedUserId
 const config = { schemaVersion: 1, templateId: 'lianhua', layers: 5, patternScale: 12, aperture: .65, material: 'bronze', separation: .6, cutaway: true, autoRotate: false, activeLayer: 0 }
+async function checkImage(id, version, cookie) {
+  const response = await fetch(`${origin}/api/works/${id}/preview?version=${version}&r=${randomUUID()}`, { headers: { Cookie: cookie, 'X-Expected-User-Id': expectedUserId } })
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'private, no-store')
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), png)
+}
 
 async function start() {
   output = ''
@@ -58,25 +69,30 @@ try {
   const cookie = login.headers.get('set-cookie').split(';')[0]
   expectedUserId = login.data.user.id
   const createKey = randomUUID()
-  const createBody = { title: '跨进程保存', description: '测试专用', config }
+  const createBody = { title: '跨进程保存', description: '测试专用', config, inspirationId: 'digital-heritage' }
   const { data: { work } } = await request('/api/works', 'POST', createBody, cookie, createKey)
+  const firstPreview = await request(`/api/works/${work.id}/preview`, 'PUT', { version: 1, imageDataUrl }, cookie)
   await stop()
   await start()
   assert.deepEqual((await request('/api/works', 'POST', createBody, cookie, createKey)).data.work, work)
   assert.equal((await request('/api/works', 'GET', undefined, cookie)).data.pagination.total, 1)
   const reopened = await request(`/api/works/${work.id}`, 'GET', undefined, cookie)
-  assert.deepEqual(reopened.data.work, work)
+  assert.deepEqual(reopened.data.work, firstPreview.data.work)
+  assert.equal(reopened.data.work.inspirationId, 'digital-heritage')
+  await checkImage(work.id, 1, cookie)
   assert.equal((await request('/api/auth/me', 'GET', undefined, cookie)).data.user.username, 'restart_qa')
   const updateKey = randomUUID()
   const updateBody = { title: '强制终止后仍存在', description: '', config: { ...config, material: 'jade' }, version: 1 }
   const updated = await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)
+  const secondPreview = await request(`/api/works/${work.id}/preview`, 'PUT', { version: 2, imageDataUrl }, cookie)
   const copyKey = randomUUID()
   const copied = await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)
   const trashKey = randomUUID()
   const trashed = await request(`/api/works/${copied.data.work.id}/trash`, 'POST', { version: 1 }, cookie, trashKey)
   await stop('SIGKILL')
   await start()
-  assert.deepEqual((await request(`/api/works/${work.id}`, 'GET', undefined, cookie)).data.work, updated.data.work)
+  assert.deepEqual((await request(`/api/works/${work.id}`, 'GET', undefined, cookie)).data.work, secondPreview.data.work)
+  await checkImage(work.id, 2, cookie)
   assert.deepEqual((await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)).data.work, updated.data.work)
   assert.deepEqual((await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)).data.work, copied.data.work)
   assert.deepEqual((await request(`/api/works/${copied.data.work.id}/trash`, 'POST', { version: 1 }, cookie, trashKey)).data.work, trashed.data.work)
@@ -86,6 +102,9 @@ try {
   const restored = await request(`/api/works/${copied.data.work.id}/restore`, 'POST', { version: 2 }, cookie, randomUUID())
   assert.equal(restored.data.work.version, 3)
   assert.equal(restored.data.work.deletedAt, null)
+  assert.equal(restored.data.work.previewVersion, 3)
+  assert.equal(restored.data.work.inspirationId, 'digital-heritage')
+  await checkImage(restored.data.work.id, 3, cookie)
   assert.equal((await request('/api/works', 'GET', undefined, cookie)).data.pagination.total, 2)
   const freshLogin = await request('/api/auth/login', 'POST', { username: 'restart_qa', password: 'OnlyForThisTest2026!' })
   const freshCookie = freshLogin.headers.get('set-cookie').split(';')[0]
@@ -97,7 +116,8 @@ try {
   assert.equal((await drift.json()).error.code, 'ACCOUNT_CHANGED')
   const otherList = await fetch(origin + '/api/works', { headers: { Cookie: otherCookie } })
   assert.equal((await otherList.json()).pagination.total, 0)
-  console.log('PASS: empty DB → registration/save → SIGTERM → create replay → update/copy/trash → SIGKILL → all replays → restore/relogin/principal guard; real compiled HTTP server and SPA fallback')
+  assert.equal((await fetch(`${origin}/api/works/${work.id}/preview?version=2`, { headers: { Cookie: otherCookie } })).status, 404)
+  console.log('PASS: empty DB → registration/source/PNG → SIGTERM → create replay/image read → update/PNG/copy/trash → SIGKILL → all replays/images → restore/relogin/principal guard; real compiled HTTP server and SPA fallback')
 } finally {
   await stop()
   await rm(directory, { recursive: true, force: true })

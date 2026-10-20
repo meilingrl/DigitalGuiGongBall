@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import { safeReturnPath } from '../lib/journey'
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior(to, from, saved) { if (saved) return saved; if (to.path !== from.path) return { top: 0 }; if (to.hash) return { el: to.hash, top: 90 } },
+  scrollBehavior(to, from, saved) { if (saved) return saved; if (to.hash) return { el: to.hash, top: 90 }; if (to.path !== from.path) return { top: 0 } },
   routes: [
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
     { path: '/', redirect: '/hub/home' },

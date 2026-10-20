@@ -5,7 +5,7 @@ import DesignPreview from './DesignPreview.vue'
 const props = defineProps<{ work: Work }>()
 const failed = ref(false)
 const revision = ref(crypto.randomUUID())
-const current = computed(() => props.work.previewVersion === props.work.version && !failed.value)
+const current = computed(() => !props.work.deletedAt && props.work.previewVersion === props.work.version && !failed.value)
 // WebKit may reuse an already decoded image for an unchanged URL even with
 // no-store. A fresh view/ack must request fresh bytes after same-version updates.
 const url = computed(() => `/api/works/${encodeURIComponent(props.work.id)}/preview?version=${props.work.version}&r=${revision.value}`)
@@ -15,7 +15,7 @@ watch(() => `${props.work.id}:${props.work.version}:${props.work.previewVersion}
 <template>
   <div class="work-thumbnail">
     <img v-if="current" :src="url" :alt="`${work.title} · 保存配置的三维预览`" loading="lazy" @error="failed = true" />
-    <template v-else><DesignPreview :config="work.config" /><span class="thumbnail-pending">{{ failed ? '预览暂不可用' : '保存后生成三维预览' }}</span></template>
+    <template v-else><DesignPreview :config="work.config" /><span class="thumbnail-pending">{{ work.deletedAt ? '恢复后继续三维观察' : failed ? '预览暂不可用' : '保存后生成三维预览' }}</span></template>
     <span v-if="current" class="thumbnail-caption">三维实景 · v{{ work.version }}</span>
   </div>
 </template>

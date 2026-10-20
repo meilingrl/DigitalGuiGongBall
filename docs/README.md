@@ -28,6 +28,7 @@
 - **地图探索页** → `src/views/hub/ExploreView.vue`，地图抽象 → `src/map/`、`src/stores/map.ts`
 - **Hub 布局与导航** → `src/layouts/HubLayout.vue`，旧侧栏/底栏组件保留为历史实现；当前核心导航在 HubLayout 中
 - **三维工坊** → `src/views/AtelierView.vue`、`src/components/AtelierScene.vue`
+- **真实首页、文化导览与作品详情** → `src/views/hub/HomeView.vue`、`MuseumView.vue`、`StudyView.vue`、`WorkDetailView.vue`；导览与模板关联 → `src/data/studies.ts`、`shared/inspirations.ts`
 - **当前程序化镂空几何与渲染** → `src/three/`；后端和共享契约 → `server/`、`shared/`
 - **历史程序化 3D 资产** → `tools/blender/*.py`，发布模型与元数据 → `src/assets/materials/models/`、`documents/`
 - **积分等业务状态** → `src/stores/points.ts` 等
