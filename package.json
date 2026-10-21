@@ -16,7 +16,8 @@
     "test:api": "tsx --test server/tests/*.test.ts",
     "test:restart": "node scripts/verify-restart.mjs",
     "test": "tsx --test server/tests/*.test.ts tests/*.test.ts",
-    "typecheck": "vue-tsc -b && tsc -p tsconfig.server.json --noEmit",
+    "typecheck": "vue-tsc -b && tsc -p tsconfig.server.json --noEmit && npm run typecheck:tests",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
     "db:backup": "tsx server/maintenance/cli.ts backup",
     "db:restore": "tsx server/maintenance/cli.ts restore"
   },

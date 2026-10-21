@@ -204,7 +204,7 @@ test('a destination created during publication survives while the partial privat
     const originalLink = fs.linkSync
     // Order an actual filesystem race deterministically: publication still calls
     // the real exclusive hard-link operation against the newly existing file.
-    const mocked = t.mock.method(fs, 'linkSync', (from, to) => {
+    const mocked = t.mock.method(fs, 'linkSync', (from: fs.PathLike, to: fs.PathLike) => {
       writeFileSync(to, 'concurrently created; preserve')
       originalLink(from, to)
     })
@@ -366,7 +366,7 @@ test('a valid foreign WAL appearing during publication fails and preserves the W
       assert.equal(foreign.prepare('SELECT title FROM works').get()!.title, 'foreign WAL change')
       const target = join(fixture.root, `${operation.name}-wal-race.sqlite`)
       const originalLink = fs.linkSync
-      const mocked = t.mock.method(fs, 'linkSync', (from, to) => {
+      const mocked = t.mock.method(fs, 'linkSync', (from: fs.PathLike, to: fs.PathLike) => {
         writeFileSync(`${to}-wal`, wal)
         originalLink(from, to)
       })
@@ -389,7 +389,7 @@ test('publication failure never unlinks a main file replaced by another actor af
   for (const operation of [backupDatabase, restoreDatabase]) {
     const target = join(fixture.root, `${operation.name}-replaced.sqlite`)
     const originalLink = fs.linkSync
-    const mocked = t.mock.method(fs, 'linkSync', (from, to) => {
+    const mocked = t.mock.method(fs, 'linkSync', (from: fs.PathLike, to: fs.PathLike) => {
       originalLink(from, to)
       fs.unlinkSync(to)
       writeFileSync(to, 'replacement main; preserve')

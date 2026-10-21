@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACESFilmicToneMapping, Color, Group, MeshPhysicalMaterial, PerspectiveCamera, Plane, Scene, SRGBColorSpace, Vector3, Vector4 } from 'three'
+import { ACESFilmicToneMapping, Color, Group, Mesh, MeshPhysicalMaterial, PerspectiveCamera, Plane, Scene, SRGBColorSpace, Vector3, Vector4 } from 'three'
 import { defaultConfig, type DesignConfig } from '../shared/design'
 import { createOrnamentLayers } from '../src/three/ornament'
 import { disposeObject } from '../src/three/resources'
@@ -17,7 +17,9 @@ test('preview reflects requested pending topology rather than the last built she
     assert.equal(snapshot.group.children.length, 3)
     assert.deepEqual(snapshot.group.children.map((layer) => layer.visible), [false, false, true])
     assert.equal(snapshot.group.children[2]!.position.x, 1.24)
-    assert.notEqual(snapshot.group.children[0]!.geometry, live[0]!.geometry)
+    const shell = snapshot.group.children[0]
+    assert.ok(shell instanceof Mesh)
+    assert.notEqual(shell.geometry, live[0]!.geometry)
     assert.equal(live[0]!.position.x, 0, 'pending snapshot must not advance the live separation animation')
     assert.equal(live[0]!.visible, true)
   } finally {
@@ -29,17 +31,21 @@ test('preview reflects requested pending topology rather than the last built she
 test('same topology reuses GPU geometry but snapshot material and cleanup cannot alter live shells', () => {
   const rendered = { ...defaultConfig, layers: 2, patternScale: 8 }
   const live = createOrnamentLayers(rendered)
-  const material = live[0]!.material as MeshPhysicalMaterial
+  const material = live[0]!.material
+  assert.ok(material instanceof MeshPhysicalMaterial)
   const originalColor = material.color.getHex()
   let geometryDisposals = 0
   let materialDisposals = 0
   live[0]!.geometry.addEventListener('dispose', () => geometryDisposals++)
   material.addEventListener('dispose', () => materialDisposals++)
   const snapshot = preview.createPreviewObject({ ...rendered, material: 'bronze', separation: 0.5 }, rendered, live, new Plane())
-  assert.equal(snapshot.group.children[0]!.geometry, live[0]!.geometry)
-  assert.notEqual(snapshot.group.children[0]!.material, material)
-  assert.notEqual((snapshot.group.children[0]!.material as MeshPhysicalMaterial).color.getHex(), originalColor)
-  assert.equal(snapshot.group.children[0]!.position.x, -0.31)
+  const shell = snapshot.group.children[0]
+  assert.ok(shell instanceof Mesh)
+  assert.ok(shell.material instanceof MeshPhysicalMaterial)
+  assert.equal(shell.geometry, live[0]!.geometry)
+  assert.notEqual(shell.material, material)
+  assert.notEqual(shell.material.color.getHex(), originalColor)
+  assert.equal(shell.position.x, -0.31)
   snapshot.dispose()
   snapshot.dispose()
   assert.equal(geometryDisposals, 0)
@@ -51,7 +57,9 @@ test('same topology reuses GPU geometry but snapshot material and cleanup cannot
 test('temporary geometry is released exactly once after a distinct retry config snapshot', () => {
   const snapshot = preview.createPreviewObject({ ...defaultConfig, layers: 2, patternScale: 8 }, undefined, [], new Plane())
   let disposed = 0
-  snapshot.group.children[0]!.geometry.addEventListener('dispose', () => disposed++)
+  const shell = snapshot.group.children[0]
+  assert.ok(shell instanceof Mesh)
+  shell.geometry.addEventListener('dispose', () => disposed++)
   snapshot.dispose()
   snapshot.dispose()
   assert.equal(disposed, 1)
@@ -85,7 +93,7 @@ test('incomplete framebuffers, context loss and GPU errors reject readback inste
     NO_ERROR: 0,
     checkFramebufferStatus: () => 0x8cd5,
     getError: () => 0,
-  }
+  } satisfies Parameters<typeof preview.canReadPreview>[0]
   assert.equal(preview.canReadPreview(gl), true)
   assert.equal(preview.canReadPreview({ ...gl, isContextLost: () => true }), false)
   assert.equal(preview.canReadPreview({ ...gl, checkFramebufferStatus: () => 0x8cd6 }), false)

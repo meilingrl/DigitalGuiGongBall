@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck frontend and backend
+      - name: Typecheck frontend, backend and tests
         run: npm run typecheck
 
       - name: Test real HTTP API, client and geometry

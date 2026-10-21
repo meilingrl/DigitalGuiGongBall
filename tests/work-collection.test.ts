@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { effectScope } from 'vue'
-import { defaultConfigs, type Work } from '../shared/design.js'
+import { makeWork } from './helpers/work.js'
 import { ApiError, type ApiOptions } from '../src/lib/api.js'
 import { useWorkCollection } from '../src/composables/useWorkCollection.js'
-const work: Work = { id: 'a-work', title: '作品', description: '', config: defaultConfigs.linglong, version: 1, deletedAt: null, createdAt: '', updatedAt: '' }
+const work = makeWork()
 const page = (total = 1) => ({ works: [work], pagination: { page: 1, pageSize: 12, total, totalPages: Math.ceil(total / 12) } })
 
 test('collection sends real search, state and pagination parameters and resets page when filtering', async () => {

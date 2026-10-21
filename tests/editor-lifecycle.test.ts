@@ -6,6 +6,7 @@ import { ApiError } from '../src/lib/api.js'
 import { cloneDesign } from '../src/lib/draft.js'
 import { useAtelierDocument } from '../src/composables/useAtelierDocument.js'
 import type { ApiOptions } from '../src/lib/api.js'
+import { makeWork } from './helpers/work.js'
 
 interface Editor {
   save(): Promise<void>
@@ -24,10 +25,10 @@ interface Editor {
   dirty: Ref<boolean>
 }
 
-const originalWork: Work = {
+const originalWork = makeWork({
   id: 'existing-work', title: '已保存作品', description: '', config: cloneDesign(defaultConfigs.linglong),
   version: 1, deletedAt: null, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
-}
+})
 
 class MemoryStorage {
   data = new Map<string, string>()
