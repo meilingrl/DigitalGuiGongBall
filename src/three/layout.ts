@@ -1,13 +1,11 @@
 import { Vector3 } from 'three'
 import type { DesignConfig } from '../../shared/design'
+import { layerRadius, setLayerPosition } from './layerSpec'
 
 /** Fit the actual visible shell bounds, including a sensible close view of a focused inner shell. */
 export function getStageLayout(config: DesignConfig, aspect: number) {
-  const positions = Array.from({ length: config.layers }, (_, index) => new Vector3(
-    (index - (config.layers - 1) / 2) * 1.24 * config.separation,
-    Math.sin(index * 0.9) * 0.18 * config.separation,
-    0,
-  ))
+  const positions = Array.from({ length: config.layers }, (_, index) =>
+    setLayerPosition(new Vector3(), index, config.layers, config.separation))
   let minX = Infinity
   let maxX = -Infinity
   let minY = config.activeLayer ? Infinity : -1.95
@@ -15,7 +13,7 @@ export function getStageLayout(config: DesignConfig, aspect: number) {
   let maxRadius = 0
   for (let index = 0; index < config.layers; index++) {
     if (config.activeLayer && config.activeLayer !== index + 1) continue
-    const radius = 1.6 - index / (config.layers - 1) * 1.1
+    const radius = layerRadius(index, config.layers)
     const position = positions[index]!
     minX = Math.min(minX, position.x - radius)
     maxX = Math.max(maxX, position.x + radius)

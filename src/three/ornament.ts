@@ -1,5 +1,7 @@
-import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, MeshPhysicalMaterial, Vector3 } from 'three'
+import { BufferGeometry, Float32BufferAttribute, Mesh, MeshPhysicalMaterial, Vector3 } from 'three'
 import type { DesignConfig } from '../../shared/design'
+import { layerMaterialParameters, layerRadius, setLayerRotation } from './layerSpec'
+export { materialPresets } from './layerSpec'
 
 export interface ShellOptions {
   templateId: DesignConfig['templateId']
@@ -126,28 +128,15 @@ export function createShellGeometry(options: ShellOptions, radius: number): Buff
   return geometry
 }
 
-export const materialPresets = {
-  ivory: { color: '#cbb58e', roughness: 0.44, metalness: 0.025, clearcoat: 0.2 },
-  jade: { color: '#4c8c78', roughness: 0.27, metalness: 0.06, clearcoat: 0.6 },
-  bronze: { color: '#9b713e', roughness: 0.31, metalness: 0.82, clearcoat: 0.15 },
-} as const
-
 export function createOrnamentLayers(config: DesignConfig): Mesh[] {
   return Array.from({ length: config.layers }, (_, index) => {
-    const radius = 1.6 - index / (config.layers - 1) * 1.1
-    const preset = materialPresets[config.material]
-    const material = new MeshPhysicalMaterial({
-      ...preset,
-      color: new Color(preset.color).offsetHSL(0, 0, -index * 0.025),
-      clearcoatRoughness: 0.3,
-      side: DoubleSide,
-      envMapIntensity: 0.65,
-    })
+    const radius = layerRadius(index, config.layers)
+    const material = new MeshPhysicalMaterial(layerMaterialParameters(config.material, index))
     const mesh = new Mesh(createShellGeometry(config, radius), material)
     mesh.name = `openwork-layer-${index + 1}`
     mesh.userData.layer = index + 1
     mesh.userData.radius = radius
-    mesh.rotation.set(index * 0.13, index * 0.27, index * 0.085)
+    setLayerRotation(mesh.rotation, index)
     return mesh
   })
 }

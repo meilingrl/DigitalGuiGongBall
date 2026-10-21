@@ -1,7 +1,8 @@
-import { Color, DoubleSide, Group, Mesh, MeshPhysicalMaterial, type Plane } from 'three'
+import { Group, Mesh, MeshPhysicalMaterial, type Plane } from 'three'
 import type { DesignConfig } from '../../shared/design'
 import { getStageLayout } from './layout'
-import { createShellGeometry, materialPresets } from './ornament'
+import { createShellGeometry } from './ornament'
+import { layerMaterialParameters, layerRadius, setLayerRotation } from './layerSpec'
 
 export function sameTopology(a: DesignConfig | undefined, b: DesignConfig): boolean {
   return !!a && a.templateId === b.templateId && a.layers === b.layers
@@ -9,7 +10,7 @@ export function sameTopology(a: DesignConfig | undefined, b: DesignConfig): bool
 }
 
 /** An isolated snapshot never advances animation or borrows a mutable live material. */
-export function createPreviewObject(config: DesignConfig, renderedConfig: DesignConfig | undefined, liveLayers: Mesh[], clipPlane: Plane) {
+export function createPreviewObject(config: DesignConfig, renderedConfig: DesignConfig | undefined, liveLayers: readonly Mesh[], clipPlane: Plane) {
   const group = new Group()
   const reuseGeometry = sameTopology(renderedConfig, config) && liveLayers.length === config.layers
   const layout = getStageLayout(config, 4 / 3)
@@ -26,24 +27,20 @@ export function createPreviewObject(config: DesignConfig, renderedConfig: Design
   }
   try {
     for (let index = 0; index < config.layers; index++) {
-      const preset = materialPresets[config.material]
       const material = new MeshPhysicalMaterial({
-        ...preset,
-        color: new Color(preset.color).offsetHSL(0, 0, -index * 0.025),
-        clearcoatRoughness: 0.3, side: DoubleSide, envMapIntensity: 0.65,
-        clippingPlanes: [clipPlane],
+        ...layerMaterialParameters(config.material, index), clippingPlanes: [clipPlane],
       })
       let mesh: Mesh
       try {
         const geometry = reuseGeometry ? liveLayers[index]!.geometry
-          : createShellGeometry(config, 1.6 - index / (config.layers - 1) * 1.1)
+          : createShellGeometry(config, layerRadius(index, config.layers))
         mesh = new Mesh(geometry, material)
       } catch (error) {
         material.dispose()
         throw error
       }
       group.add(mesh)
-      mesh.rotation.set(index * 0.13, index * 0.27, index * 0.085)
+      setLayerRotation(mesh.rotation, index)
       mesh.position.copy(layout.positions[index]!)
       mesh.visible = config.activeLayer === 0 || config.activeLayer === index + 1
     }
@@ -86,4 +83,27 @@ export function compactPreview(encode: (width: number, height: number) => string
     if (bytes <= 256 * 1024) return dataUrl
   }
   return undefined
+}
+
+/** Composite straight-alpha, display-space readback over the studio background. */
+export function encodePreviewPixels(pixels: Uint8Array, width: number, height: number, backgroundColor: string): string | undefined {
+  const source = document.createElement('canvas')
+  source.width = width
+  source.height = height
+  const sourceContext = source.getContext('2d')
+  if (!sourceContext) return undefined
+  sourceContext.putImageData(new ImageData(uprightRgba(pixels, width, height), width, height), 0, 0)
+  const output = document.createElement('canvas')
+  const outputContext = output.getContext('2d')
+  if (!outputContext) return undefined
+  return compactPreview((outputWidth, outputHeight) => {
+    output.width = outputWidth
+    output.height = outputHeight
+    outputContext.imageSmoothingEnabled = true
+    outputContext.imageSmoothingQuality = 'high'
+    outputContext.fillStyle = backgroundColor
+    outputContext.fillRect(0, 0, outputWidth, outputHeight)
+    outputContext.drawImage(source, 0, 0, outputWidth, outputHeight)
+    return output.toDataURL('image/png')
+  })
 }

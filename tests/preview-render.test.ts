@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACESFilmicToneMapping, Color, Group, Mesh, MeshPhysicalMaterial, PerspectiveCamera, Plane, Scene, SRGBColorSpace, Vector3, Vector4 } from 'three'
+import { Color, Group, Mesh, MeshPhysicalMaterial, PerspectiveCamera, Plane, Scene, HalfFloatType, Vector3, Vector4, WebGLRenderTarget } from 'three'
 import { defaultConfig, type DesignConfig } from '../shared/design'
 import { createOrnamentLayers } from '../src/three/ornament'
 import { disposeObject } from '../src/three/resources'
 import * as preview from '../src/three/preview'
-import { AtelierStage } from '../src/three/AtelierStage'
+import { captureWorkPreview, type PreviewGpu, type PreviewRenderer } from '../src/three/previewCapture'
 
 test('preview reflects requested pending topology rather than the last built shells', () => {
   assert.equal(typeof preview.createPreviewObject, 'function')
@@ -100,115 +100,230 @@ test('incomplete framebuffers, context loss and GPU errors reject readback inste
   assert.equal(preview.canReadPreview({ ...gl, getError: () => 0x0506 }), false)
 })
 
-for (const theme of ['light', 'dark'] as const) for (const fail of [false, true]) test(`${theme} preview ${fail ? 'GPU failure' : 'success'} restores background, clear state and live view`, () => {
-  assert.equal(typeof AtelierStage.prototype.exportPreview, 'function')
-  const scene = new Scene()
-  const originalBackground = new Color(theme === 'light' ? '#eeeae0' : '#141c1a')
-  scene.background = originalBackground
-  const object = new Group()
-  const pedestal = new Group()
-  pedestal.scale.set(1.23, 1, 1)
-  scene.add(object, pedestal)
-  const camera = new PerspectiveCamera(35, 0.6, 0.05, 100)
-  camera.position.set(3, 2, 9)
-  const cameraBefore = camera.clone()
-  const clipPlane = new Plane(new Vector3(0, 0, -1), 4.56)
-  const viewport = new Vector4(0, 0, 600, 1000)
-  const scissor = new Vector4(2, 3, 100, 200)
-  let target: unknown = null
-  let currentViewport = viewport.clone()
-  let currentScissor = scissor.clone()
-  let scissorTest = true
-  const clearColor = new Color('#204060')
-  const originalClearColor = clearColor.clone()
-  let clearAlpha = 0.37
-  let captured: { sameScene: boolean; liveVisible: boolean; aspect: number; clip: number; positions: number[];
-    background: unknown; clearAlpha: number; clearColor: string } | undefined
-  const painting: unknown[] = []
-  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6WZkAAAAASUVORK5CYII='
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6WZkAAAAASUVORK5CYII='
+const outcomes = ['success', 'render', 'output', 'readback', 'framebuffer', 'lost', 'encode', 'restore'] as const
+
+// Only native GPU operations are replaced. Scene, camera, geometry, materials and
+// render targets are real Three objects, observed where capture sends them to the GPU.
+for (const topology of ['borrowed', 'pending', 'older retry'] as const) {
+  for (const outcome of outcomes) test(`${topology} capture: ${outcome} preserves live state and releases only temporary resources`, () => {
+    const rendered = { ...defaultConfig, layers: 2, patternScale: 8 }
+    const live = createOrnamentLayers(rendered)
+    const requested: DesignConfig = { ...rendered, separation: 1, cutaway: true, material: 'bronze',
+      ...(topology === 'borrowed' ? {} : { layers: 3, templateId: topology === 'pending' ? 'ruyi' : 'lianhua', activeLayer: 3 }),
+    }
+    const scene = new Scene()
+    const background = new Color('#141c1a')
+    scene.background = background
+    const object = new Group()
+    object.add(...live)
+    object.visible = topology !== 'older retry'
+    object.rotation.set(0.05, 0.32, -0.025)
+    const pedestal = new Group()
+    pedestal.scale.set(1.23, 0.9, 1.1)
+    scene.add(object, pedestal)
+    const camera = new PerspectiveCamera(35, 0.6, 0.05, 100)
+    camera.position.set(3, 2, 9)
+    camera.zoom = 1.3
+    camera.setViewOffset(600, 1000, 10, 20, 300, 500)
+    const cameraBefore = camera.clone()
+    const viewTarget = new Vector3(0.2, 0.3, 0.4)
+    const clipPlane = new Plane(new Vector3(0, 0, -1), 4.56)
+    const priorTarget = new WebGLRenderTarget(7, 11)
+    let target: WebGLRenderTarget | null = priorTarget
+    let face = 2
+    let mip = 3
+    let viewport = new Vector4(5, 7, 600, 1000)
+    let scissor = new Vector4(2, 3, 100, 200)
+    let scissorTest = true
+    const clearColor = new Color('#204060')
+    const originalClearColor = clearColor.clone()
+    let clearAlpha = 0.37
+    let renderCount = 0
+    let encoded = false
+    let outputDisposals = 0
+    let liveDisposals = 0
+    let temporaryGeometryDisposals = 0
+    let temporaryMaterialDisposals = 0
+    const targetDisposals: WebGLRenderTarget[] = []
+    const allocatedTargets = new Set<WebGLRenderTarget>()
+    live.forEach(layer => {
+      layer.geometry.addEventListener('dispose', () => liveDisposals++)
+      assert.ok(layer.material instanceof MeshPhysicalMaterial)
+      layer.material.addEventListener('dispose', () => liveDisposals++)
+    })
+    const renderer: PreviewRenderer = {
+      getContext: () => ({
+        isContextLost: () => outcome === 'lost' && renderCount > 0,
+        FRAMEBUFFER: 0x8d40, FRAMEBUFFER_COMPLETE: 0x8cd5, NO_ERROR: 0,
+        checkFramebufferStatus: () => outcome === 'framebuffer' ? 0x8cd6 : 0x8cd5,
+        getError: () => 0,
+      }),
+      getRenderTarget: () => target,
+      getActiveCubeFace: () => face,
+      getActiveMipmapLevel: () => mip,
+      getViewport: out => out.copy(viewport),
+      getScissor: out => out.copy(scissor),
+      getScissorTest: () => scissorTest,
+      getClearColor: out => out.copy(clearColor),
+      getClearAlpha: () => clearAlpha,
+      setClearColor: (value, alpha) => { clearColor.set(value); clearAlpha = alpha },
+      setRenderTarget: (value, nextFace = 0, nextMip = 0) => {
+        target = value; face = nextFace; mip = nextMip
+        if (outcome === 'restore' && value === priorTarget) throw new Error('Context failed during restore')
+        if (value !== priorTarget && value && !allocatedTargets.has(value)) {
+          allocatedTargets.add(value)
+          value.addEventListener('dispose', () => targetDisposals.push(value))
+          // Native setRenderTarget replaces the target-specific viewport/scissor.
+          viewport.copy(value.viewport); scissor.copy(value.scissor)
+        }
+      },
+      setViewport: value => { viewport.copy(value) },
+      setScissor: value => { scissor.copy(value) },
+      setScissorTest: value => { scissorTest = value },
+      render: (renderedScene, previewCamera) => {
+        renderCount++
+        assert.equal(renderedScene, scene)
+        assert.equal(object.visible, false)
+        assert.equal(scene.background, null)
+        assert.equal(clearAlpha, 0)
+        assert.equal(clearColor.getHexString(), '000000')
+        assert.equal(scissorTest, false)
+        assert.equal(clipPlane.constant, 0.12)
+        assert.equal(previewCamera.aspect, 4 / 3)
+        assert.equal(previewCamera.zoom, 1)
+        assert.equal(previewCamera.view?.enabled, false)
+        assert.notEqual(previewCamera, camera)
+        assert.ok(target)
+        assert.equal(target.width, 960)
+        assert.equal(target.height, 720)
+        assert.equal(target.texture.type, HalfFloatType)
+        const snapshot = scene.children.find(child => child !== object && child !== pedestal)
+        assert.ok(snapshot instanceof Group)
+        assert.deepEqual(snapshot.rotation.toArray(), object.rotation.toArray())
+        assert.equal(snapshot.children.length, requested.layers)
+        assert.deepEqual(snapshot.children.map(child => child.position.x), topology === 'borrowed' ? [-0.62, 0.62] : [-1.24, 0, 1.24])
+        assert.deepEqual(snapshot.children.map(child => child.visible), topology === 'borrowed' ? [true, true] : [false, false, true])
+        snapshot.children.forEach((child, index) => {
+          assert.ok(child instanceof Mesh)
+          assert.ok(child.material instanceof MeshPhysicalMaterial)
+          assert.equal(child.material.metalness, 0.82)
+          if (index === 0) {
+            // Outer vertex at motif angle pi/16: independent numeric fixtures
+            // distinguish the requested motif even when layer counts agree.
+            const vertex = child.geometry.getAttribute('position')
+            const expected = topology === 'borrowed' ? [0.58433772, 1.43876123, 0.45292972]
+              : topology === 'pending' ? [0.59643575, 1.44251338, 0.42432216] : [0.60077207, 1.44396287, 0.41312698]
+            const actual = [vertex.getX(4), vertex.getY(4), vertex.getZ(4)]
+            actual.forEach((value, axis) => assert.ok(Math.abs(value - expected[axis]!) < 1e-6, 'capture must use the requested motif'))
+          }
+          assert.deepEqual(child.material.clippingPlanes, [clipPlane])
+          child.material.addEventListener('dispose', () => temporaryMaterialDisposals++)
+          if (topology === 'borrowed') assert.equal(child.geometry, live[index]!.geometry)
+          else {
+            assert.notEqual(child.geometry, live[index]?.geometry)
+            child.geometry.addEventListener('dispose', () => temporaryGeometryDisposals++)
+          }
+        })
+        if (outcome === 'render') throw new Error('Unavailable GPU')
+      },
+      readRenderTargetPixels: (output, x, y, width, height, pixels) => {
+        assert.equal(output, target)
+        assert.deepEqual([x, y, width, height], [0, 0, 960, 720])
+        if (outcome === 'readback') throw new Error('Readback failed')
+        pixels[0] = 123
+      },
+    }
+    const gpu: PreviewGpu = {
+      renderer,
+      createOutputPass: () => ({
+        render: (output, input) => {
+          assert.equal(input, target)
+          assert.equal(input.texture.type, HalfFloatType)
+          renderer.setRenderTarget(output)
+          if (outcome === 'output') throw new Error('Output pass failed')
+        },
+        dispose: () => { outputDisposals++ },
+      }),
+    }
+    const needsOutput = !['render', 'framebuffer', 'lost'].includes(outcome)
+    try {
+      const result = captureWorkPreview(requested, {
+        scene, camera, viewTarget, object, pedestal, clipPlane, liveLayers: live,
+        renderedConfig: rendered, backgroundColor: '#141c1a',
+      }, gpu, (pixels, width, height, backgroundColor) => {
+        assert.equal(pixels[0], 123)
+        assert.deepEqual([width, height, backgroundColor], [960, 720, '#141c1a'])
+        encoded = true
+        if (outcome === 'encode') throw new Error('Canvas failed')
+        return png
+      })
+      assert.equal(result, outcome === 'success' ? png : undefined)
+      assert.equal(renderCount, 1)
+      assert.equal(encoded, ['success', 'encode', 'restore'].includes(outcome))
+      assert.equal(outputDisposals, needsOutput ? 1 : 0)
+      assert.equal(targetDisposals.length, needsOutput ? 2 : 1)
+      assert.equal(new Set(targetDisposals).size, targetDisposals.length)
+      assert.equal(temporaryGeometryDisposals, topology === 'borrowed' ? 0 : 3)
+      assert.equal(temporaryMaterialDisposals, requested.layers)
+      assert.equal(liveDisposals, 0)
+      assert.equal(scene.background, background)
+      assert.deepEqual(clearColor, originalClearColor)
+      assert.equal(clearAlpha, 0.37)
+      assert.equal(object.visible, topology !== 'older retry')
+      assert.deepEqual(pedestal.scale.toArray(), [1.23, 0.9, 1.1])
+      assert.equal(clipPlane.constant, 4.56)
+      assert.deepEqual(scene.children, [object, pedestal])
+      assert.deepEqual(camera.position, cameraBefore.position)
+      assert.deepEqual(camera.quaternion.toArray(), cameraBefore.quaternion.toArray())
+      assert.deepEqual(camera.projectionMatrix, cameraBefore.projectionMatrix)
+      assert.deepEqual(camera.view, cameraBefore.view)
+      assert.equal(camera.aspect, 0.6)
+      assert.equal(camera.zoom, 1.3)
+      assert.deepEqual(viewTarget.toArray(), [0.2, 0.3, 0.4])
+      assert.equal(target, priorTarget)
+      assert.equal(face, 2)
+      assert.equal(mip, 3)
+      assert.deepEqual(viewport.toArray(), [5, 7, 600, 1000])
+      assert.deepEqual(scissor.toArray(), [2, 3, 100, 200])
+      assert.equal(scissorTest, true)
+      assert.deepEqual(live.map(layer => layer.position.toArray()), [[0, 0, 0], [0, 0, 0]])
+    } finally {
+      live.forEach(disposeObject)
+      priorTarget.dispose()
+    }
+  })
+}
+
+for (const background of ['#eeeae0', '#141c1a']) test(`PNG encoder composites upright straight-alpha pixels over ${background}`, () => {
+  assert.equal(typeof preview.encodePreviewPixels, 'function')
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
   const previousImageData = Object.getOwnPropertyDescriptor(globalThis, 'ImageData')
+  const painting: unknown[] = []
   const context = {
     fillStyle: '',
-    putImageData: () => {},
-    fillRect: () => { painting.push(['background', context.fillStyle]) },
-    drawImage: () => { painting.push(['scene']) },
+    putImageData: (value: { pixels: Uint8ClampedArray; width: number; height: number }) => {
+      painting.push(['pixels', [...value.pixels], value.width, value.height])
+    },
+    fillRect: (...bounds: number[]) => { painting.push(['background', context.fillStyle, bounds]) },
+    drawImage: (_source: unknown, ...bounds: number[]) => { painting.push(['scene', bounds]) },
   }
   Object.defineProperty(globalThis, 'document', { configurable: true, value: {
     createElement: () => ({ width: 0, height: 0, getContext: () => context, toDataURL: () => png }),
   } })
-  Object.defineProperty(globalThis, 'ImageData', { configurable: true, value: class {} })
-  const renderer = {
-    outputColorSpace: SRGBColorSpace,
-    toneMapping: ACESFilmicToneMapping,
-    toneMappingExposure: 0.9,
-    getContext: () => ({
-      isContextLost: () => false,
-      FRAMEBUFFER: 0x8d40,
-      FRAMEBUFFER_COMPLETE: 0x8cd5,
-      NO_ERROR: 0,
-      checkFramebufferStatus: () => 0x8cd5,
-      getError: () => 0,
-    }),
-    getRenderTarget: () => target,
-    getActiveCubeFace: () => 0,
-    getActiveMipmapLevel: () => 0,
-    getViewport: (out: Vector4) => out.copy(currentViewport),
-    getScissor: (out: Vector4) => out.copy(currentScissor),
-    getScissorTest: () => scissorTest,
-    getClearColor: (out: Color) => out.copy(clearColor),
-    getClearAlpha: () => clearAlpha,
-    setClearColor: (value: Color, alpha?: number) => { clearColor.set(value); if (alpha !== undefined) clearAlpha = alpha },
-    setClearAlpha: (value: number) => { clearAlpha = value },
-    setRenderTarget: (value: unknown) => { target = value },
-    setViewport: (value: Vector4) => { currentViewport = value.clone() },
-    setScissor: (value: Vector4) => { currentScissor = value.clone() },
-    setScissorTest: (value: boolean) => { scissorTest = value },
-    readRenderTargetPixels: () => {},
-    render: (value: Scene, previewCamera: PerspectiveCamera) => {
-      if (value !== scene) return // OutputPass uses the same mocked GPU boundary.
-      const temporary = value.children.find((child) => child !== object && child !== pedestal) as Group
-      captured = { sameScene: value === scene, liveVisible: object.visible, aspect: previewCamera.aspect,
-        clip: clipPlane.constant, positions: temporary.children.map((child) => child.position.x),
-        background: value.background, clearAlpha, clearColor: clearColor.getHexString() }
-      if (fail) throw new Error('Unavailable GPU')
-    },
-  }
-  const stage = Object.create(AtelierStage.prototype)
-  const pending = setTimeout(() => {}, 60_000)
-  const config = { ...defaultConfig, layers: 2, patternScale: 8 }
-  Object.assign(stage, {
-    scene, object, pedestal, camera, clipPlane, renderer, config, theme, layers: [],
-    controls: { target: new Vector3(), update: () => { throw new Error('Snapshot must not advance controls') } },
-    rebuildTimer: pending, fitting: true, separation: 0.03,
-  })
+  Object.defineProperty(globalThis, 'ImageData', { configurable: true, value: class {
+    constructor(public pixels: Uint8ClampedArray, public width: number, public height: number) {}
+  } })
   try {
-    assert.equal(stage.exportPreview({ ...config, separation: 1, cutaway: true }), fail ? undefined : png)
-    assert.deepEqual(captured, { sameScene: true, liveVisible: false, aspect: 4 / 3,
-      clip: 0.12, positions: [-0.62, 0.62], background: null, clearAlpha: 0, clearColor: '000000' })
-    assert.deepEqual(painting, fail ? [] : [['background', theme === 'light' ? '#eeeae0' : '#141c1a'], ['scene']])
-    assert.equal(scene.background, originalBackground)
-    assert.deepEqual(clearColor, originalClearColor)
-    assert.equal(clearAlpha, 0.37)
-    assert.equal(object.visible, true)
-    assert.equal(pedestal.scale.x, 1.23)
-    assert.equal(clipPlane.constant, 4.56)
-    assert.deepEqual(scene.children, [object, pedestal])
-    assert.deepEqual(camera.position, cameraBefore.position)
-    assert.equal(camera.aspect, cameraBefore.aspect)
-    assert.equal(stage.rebuildTimer, pending)
-    assert.equal(stage.separation, 0.03)
-    assert.equal(stage.fitting, true)
-    assert.equal(stage.config, config)
-    assert.equal(target, null)
-    assert.deepEqual(currentViewport, viewport)
-    assert.deepEqual(currentScissor, scissor)
-    assert.equal(scissorTest, true)
+    assert.equal(preview.encodePreviewPixels(new Uint8Array([0, 0, 255, 64, 255, 0, 0, 128]), 1, 2, background), png)
+    assert.deepEqual(painting, [
+      ['pixels', [255, 0, 0, 128, 0, 0, 255, 64], 1, 2],
+      ['background', background, [0, 0, 480, 360]], ['scene', [0, 0, 480, 360]],
+    ])
   } finally {
-    clearTimeout(pending)
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
-    else delete (globalThis as Record<string, unknown>).document
+    else Reflect.deleteProperty(globalThis, 'document')
     if (previousImageData) Object.defineProperty(globalThis, 'ImageData', previousImageData)
-    else delete (globalThis as Record<string, unknown>).ImageData
+    else Reflect.deleteProperty(globalThis, 'ImageData')
   }
 })

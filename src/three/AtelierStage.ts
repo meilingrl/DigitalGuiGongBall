@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import type { DesignConfig } from '../../shared/design'
-import { createOrnamentLayers, materialPresets } from './ornament'
+import { createOrnamentLayers } from './ornament'
 import { disposeObject } from './resources'
 import { getStageLayout } from './layout'
-import { canReadPreview, compactPreview, createPreviewObject, sameTopology, uprightRgba } from './preview'
+import { layerMaterialParameters, setLayerPosition } from './layerSpec'
+import { sameTopology } from './preview'
+import { captureWorkPreview, createPreviewGpu } from './previewCapture'
 
 type Theme = 'light' | 'dark'
 interface StageEvents { ready: () => void; error: (message: string) => void }
@@ -184,11 +185,7 @@ export class AtelierStage {
     } else if (previous.material !== config.material) {
       this.layers.forEach((layer, index) => {
         const material = layer.material as THREE.MeshPhysicalMaterial
-        const preset = materialPresets[config.material]
-        material.color.set(preset.color).offsetHSL(0, 0, -index * 0.025)
-        material.roughness = preset.roughness
-        material.metalness = preset.metalness
-        material.clearcoat = preset.clearcoat
+        material.setValues(layerMaterialParameters(config.material, index))
       })
     }
     if (previous.separation !== config.separation || previous.layers !== config.layers || previous.activeLayer !== config.activeLayer) this.fitting = true
@@ -223,117 +220,12 @@ export class AtelierStage {
   /** Capture the saved attempt, including an older retry, without advancing the live editor. */
   exportPreview(config: DesignConfig): string | undefined {
     if (this.destroyed || this.contextLost) return undefined
-    try {
-      if (this.renderer.getContext().isContextLost()) return undefined
-      const requested = { ...config }
-      const previousTarget = this.renderer.getRenderTarget()
-      const previousFace = this.renderer.getActiveCubeFace()
-      const previousMip = this.renderer.getActiveMipmapLevel()
-      const previousViewport = this.renderer.getViewport(new THREE.Vector4())
-      const previousScissor = this.renderer.getScissor(new THREE.Vector4())
-      const previousScissorTest = this.renderer.getScissorTest()
-      const previousBackground = this.scene.background
-      const previousClearColor = this.renderer.getClearColor(new THREE.Color())
-      const previousClearAlpha = this.renderer.getClearAlpha()
-      const previousVisible = this.object.visible
-      const previousPedestalScale = this.pedestal.scale.clone()
-      const previousClip = this.clipPlane.constant
-      let snapshot: ReturnType<typeof createPreviewObject> | undefined
-      let target: THREE.WebGLRenderTarget | undefined
-      let outputTarget: THREE.WebGLRenderTarget | undefined
-      let outputPass: OutputPass | undefined
-      try {
-        snapshot = createPreviewObject(requested, this.renderedConfig, this.layers, this.clipPlane)
-        snapshot.group.rotation.copy(this.object.rotation)
-        this.scene.add(snapshot.group)
-        snapshot.group.updateMatrixWorld(true)
-        const layout = getStageLayout(requested, 4 / 3)
-        const centre = snapshot.group.localToWorld(layout.target)
-        // A separate camera preserves OrbitControls' private damping/gesture state.
-        const camera = this.camera.clone()
-        camera.aspect = 4 / 3
-        camera.zoom = 1
-        camera.clearViewOffset()
-        const direction = this.camera.position.clone().sub(this.controls.target)
-        if (direction.lengthSq() < 1e-12) direction.set(0.34, 0.17, 1)
-        camera.position.copy(direction.normalize().multiplyScalar(layout.distance).add(centre))
-        camera.lookAt(centre)
-        camera.updateProjectionMatrix()
-        this.object.visible = false
-        this.pedestal.scale.x = 1 + requested.separation * requested.layers * 0.32
-        this.clipPlane.constant = requested.cutaway ? 0.12 : 9
-        // A scene Color is a direct clear onscreen, not a tone-mapped material.
-        // Keep it outside the HDR pass so thumbnail and studio backgrounds match.
-        this.scene.background = null
-        this.renderer.setClearColor(0x000000, 0)
-
-        // Offscreen rendering uses this renderer/context and never resizes its visible canvas.
-        const width = 960
-        const height = 720
-        target = new THREE.WebGLRenderTarget(width, height, {
-          type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false,
-        })
-        this.renderer.setRenderTarget(target)
-        this.renderer.setScissorTest(false)
-        this.renderer.render(this.scene, camera)
-        if (this.contextLost || !canReadPreview(this.renderer.getContext())) return undefined
-        // Three renders linear HDR into offscreen targets. Its output pass applies
-        // the renderer's ACES exposure and sRGB transfer before byte readback.
-        outputTarget = new THREE.WebGLRenderTarget(width, height, { depthBuffer: false, stencilBuffer: false })
-        outputPass = new OutputPass()
-        // Alpha blending into a transparent HDR buffer produces premultiplied RGB.
-        // Unpremultiply before nonlinear ACES/sRGB, since ImageData takes straight
-        // alpha; doing it afterward would darken the contact shadow and edges.
-        const sample = 'gl_FragColor = texture2D( tDiffuse, vUv );'
-        if (!outputPass.material.fragmentShader.includes(sample)) return undefined
-        outputPass.material.fragmentShader = outputPass.material.fragmentShader.replace(sample,
-          `${sample}\n gl_FragColor.rgb = gl_FragColor.a > 0.0 ? gl_FragColor.rgb / gl_FragColor.a : vec3(0.0);`)
-        outputPass.render(this.renderer, outputTarget, target, 0, false)
-        const pixels = new Uint8Array(width * height * 4)
-        this.renderer.readRenderTargetPixels(outputTarget, 0, 0, width, height, pixels)
-        if (this.contextLost || !canReadPreview(this.renderer.getContext())) return undefined
-        const source = document.createElement('canvas')
-        source.width = width
-        source.height = height
-        const sourceContext = source.getContext('2d')
-        if (!sourceContext) return undefined
-        sourceContext.putImageData(new ImageData(uprightRgba(pixels, width, height), width, height), 0, 0)
-        const output = document.createElement('canvas')
-        const outputContext = output.getContext('2d')
-        if (!outputContext) return undefined
-        return compactPreview((outputWidth, outputHeight) => {
-          output.width = outputWidth
-          output.height = outputHeight
-          outputContext.imageSmoothingEnabled = true
-          outputContext.imageSmoothingQuality = 'high'
-          outputContext.fillStyle = this.theme === 'light' ? '#eeeae0' : '#141c1a'
-          outputContext.fillRect(0, 0, outputWidth, outputHeight)
-          outputContext.drawImage(source, 0, 0, outputWidth, outputHeight)
-          return output.toDataURL('image/png')
-        })
-      } finally {
-        this.object.visible = previousVisible
-        this.pedestal.scale.copy(previousPedestalScale)
-        this.clipPlane.constant = previousClip
-        this.scene.background = previousBackground
-        if (snapshot) {
-          this.scene.remove(snapshot.group)
-          snapshot.dispose()
-        }
-        // Dispose even if context restoration itself fails during GPU loss.
-        try {
-          this.renderer.setClearColor(previousClearColor, previousClearAlpha)
-          this.renderer.setRenderTarget(previousTarget, previousFace, previousMip)
-          this.renderer.setViewport(previousViewport)
-          this.renderer.setScissor(previousScissor)
-          this.renderer.setScissorTest(previousScissorTest)
-        } finally {
-          outputPass?.dispose()
-          outputTarget?.dispose()
-          target?.dispose()
-        }
-      }
-    } catch { return undefined }
+    return captureWorkPreview(config, {
+      scene: this.scene, camera: this.camera, viewTarget: this.controls.target,
+      object: this.object, pedestal: this.pedestal, clipPlane: this.clipPlane,
+      liveLayers: this.layers, renderedConfig: this.renderedConfig,
+      backgroundColor: this.theme === 'light' ? '#eeeae0' : '#141c1a',
+    }, createPreviewGpu(this.renderer))
   }
 
   private readonly resize = () => {
@@ -374,10 +266,8 @@ export class AtelierStage {
     this.lastTime = time
     const ease = this.reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 7)
     this.separation = THREE.MathUtils.lerp(this.separation, this.config.separation, ease)
-    const centre = (this.config.layers - 1) / 2
     this.layers.forEach((layer, index) => {
-      layer.position.x = (index - centre) * 1.24 * this.separation
-      layer.position.y = Math.sin(index * 0.9) * 0.18 * this.separation
+      setLayerPosition(layer.position, index, this.config.layers, this.separation)
     })
     this.pedestal.scale.x = 1 + this.separation * this.config.layers * 0.32
     this.clipPlane.constant = THREE.MathUtils.lerp(this.clipPlane.constant, this.config.cutaway ? 0.12 : 9, ease)
