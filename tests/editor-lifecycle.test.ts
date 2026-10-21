@@ -39,7 +39,7 @@ class MemoryStorage {
   removeItem(key: string) { this.data.delete(key) }
 }
 
-async function createEditor(existing: boolean, storage = new MemoryStorage()) {
+async function createEditor(existing: boolean, storage = new MemoryStorage(), navigate?: (id: string) => Promise<void>) {
   const scope = effectScope()
   const navigations: string[] = []
   const mutations: Array<{
@@ -58,7 +58,10 @@ async function createEditor(existing: boolean, storage = new MemoryStorage()) {
   const editor = scope.run(() => useAtelierDocument({
     userId: 'user-a', storage, request,
     source: () => existing ? { workId: originalWork.id } : { templateId: 'linglong' },
-    replaceWorkId: async id => { navigations.push(`/atelier/${id}`) },
+    replaceWorkId: async id => {
+      navigations.push(`/atelier/${id}`)
+      await navigate?.(id)
+    },
   }))!
   await editor.load()
   assert.equal(editor.loading.value, false)
@@ -320,5 +323,127 @@ test('the editor keeps retention cleanup visible after evicting a device draft, 
     h.editor.description.value = '下一次自动保存不能悄悄抹掉清理通知'
     assert.match(h.editor.draftNotice.value, /清理|上限/)
     assert.equal(storage.length, 20)
+  } finally { h.unmount() }
+})
+
+
+test('a navigation rejection cannot undo an acknowledged first save or leave a pending write', async () => {
+  const h = await createEditor(false, new MemoryStorage(), async () => { throw new Error('导航被阻止') })
+  try {
+    h.editor.title.value = '已确认的作品'
+    const saving = h.editor.save()
+    h.settleSuccess()
+    await saving
+    assert.equal(h.editor.work.value?.id, 'created-work')
+    assert.equal(h.editor.work.value?.title, '已确认的作品')
+    assert.equal(h.editor.work.value?.version, 1)
+    assert.equal(JSON.parse(h.editor.baseline.value).title, '已确认的作品')
+    assert.equal(h.editor.saveState.value, 'saved')
+    assert.equal(h.editor.saveError.value, '')
+    assert.equal(h.editor.pendingSave.value, null)
+    assert.equal(h.editor.dirty.value, false)
+    assert.equal(h.storage.length, 0)
+    assert.equal(h.editor.navigationError.value, '导航被阻止')
+    assert.equal(h.editor.redirecting.value, false)
+  } finally { h.unmount() }
+})
+
+
+test('navigation retry only replaces the saved route and preserves newer unsaved edits', async () => {
+  let attempts = 0
+  const h = await createEditor(false, new MemoryStorage(), async id => {
+    assert.equal(id, 'created-work')
+    if (++attempts === 1) throw new Error('导航暂不可用')
+  })
+  try {
+    h.editor.title.value = '第一次确认'
+    const saving = h.editor.save()
+    h.settleSuccess()
+    await saving
+    assert.equal(h.editor.navigationError.value, '导航暂不可用')
+    h.editor.title.value = '保存后继续编辑'
+    h.editor.config.value.material = 'jade'
+    const confirmedBaseline = h.editor.baseline.value
+    await h.editor.retryNavigation()
+    assert.deepEqual(h.navigations, ['/atelier/created-work', '/atelier/created-work'])
+    assert.equal(h.mutations.length, 1, 'navigation retry cannot send another HTTP write')
+    assert.equal(h.reads(), 0, 'navigation retry cannot reload the saved document')
+    assert.equal(h.editor.title.value, '保存后继续编辑')
+    assert.equal(h.editor.config.value.material, 'jade')
+    assert.equal(h.editor.baseline.value, confirmedBaseline)
+    assert.equal(h.editor.dirty.value, true)
+    assert.equal(h.editor.saveError.value, '')
+    assert.equal(h.editor.navigationError.value, '')
+    await h.editor.retryNavigation()
+    assert.equal(attempts, 2, 'a successful navigation leaves no retry to perform')
+  } finally { h.unmount() }
+})
+
+for (const result of ['success', 'failure'] as const) {
+  for (const abandon of ['unmount', 'load'] as const) {
+    test(`late navigation ${result} after ${abandon} cannot change the current document state`, async () => {
+      let resolveNavigation!: () => void
+      let rejectNavigation!: (reason: Error) => void
+      const navigation = new Promise<void>((resolve, reject) => {
+        resolveNavigation = resolve
+        rejectNavigation = reject
+      })
+      const h = await createEditor(false, new MemoryStorage(), () => navigation)
+      try {
+        const saving = h.editor.save()
+        h.settleSuccess()
+        await nextTick()
+        assert.equal(h.editor.redirecting.value, true)
+        assert.equal(h.editor.saveState.value, 'saved')
+        if (abandon === 'unmount') h.unmount()
+        else await h.editor.load()
+        const abandoned = state(h.editor)
+        if (result === 'success') resolveNavigation()
+        else rejectNavigation(new Error('迟到的导航失败'))
+        await saving
+        assert.deepEqual(state(h.editor), abandoned)
+        assert.equal(h.mutations.length, 1)
+        if (abandon === 'load') {
+          assert.equal(h.editor.navigationError.value, '')
+          assert.equal(h.editor.redirecting.value, false)
+        }
+      } finally { h.unmount() }
+    })
+  }
+}
+
+test('navigation retry reports another failure independently and reload clears the old prompt', async () => {
+  const h = await createEditor(false, new MemoryStorage(), async () => { throw new Error('导航仍被阻止') })
+  try {
+    const saving = h.editor.save()
+    h.settleSuccess()
+    await saving
+    await h.editor.retryNavigation()
+    assert.equal(h.editor.saveState.value, 'saved')
+    assert.equal(h.editor.saveError.value, '')
+    assert.equal(h.editor.navigationError.value, '导航仍被阻止')
+    assert.equal(h.mutations.length, 1)
+    await h.editor.load()
+    assert.equal(h.editor.navigationError.value, '')
+    await h.editor.retryNavigation()
+    assert.equal(h.navigations.length, 2, 'a new document cannot retry the previous document route')
+  } finally { h.unmount() }
+})
+
+test('a replacement parameter model synchronously clamps focus and persists the edited draft', async () => {
+  const h = await createEditor(false)
+  try {
+    const initial = h.editor.config.value
+    h.editor.config.value = { ...initial, layers: 2, activeLayer: 5, material: 'jade' }
+    assert.equal(initial.material, 'ivory', 'replacing the model must not mutate the original configuration')
+    assert.equal(h.editor.config.value.activeLayer, 0)
+    assert.equal(h.editor.dirty.value, true)
+    assert.equal(h.editor.saveState.value, 'idle')
+    const { readDraft } = await import('../src/lib/drafts.js')
+    const stored = readDraft(h.storage, 'user-a', 'new:linglong').draft
+    assert.ok(stored)
+    assert.equal(stored.config.layers, 2)
+    assert.equal(stored.config.activeLayer, 0)
+    assert.equal(stored.config.material, 'jade')
   } finally { h.unmount() }
 })

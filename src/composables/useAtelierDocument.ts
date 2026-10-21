@@ -32,6 +32,7 @@ export function useAtelierDocument(options: Options) {
   const loading = ref(true)
   const loadError = ref('')
   const saveError = ref('')
+  const navigationError = ref('')
   const saveState = ref<'idle' | 'saving' | 'saved'>('idle')
   const baseline = ref('')
   const conflict = ref(false)
@@ -85,6 +86,7 @@ export function useAtelierDocument(options: Options) {
     else persistDraft()
     const current = ++generation
     loading.value = true; loadError.value = ''; saveError.value = ''; saveState.value = 'idle'
+    navigationError.value = ''; redirecting.value = false
     conflict.value = false; expired.value = false; pendingSave.value = null; recovery.value = null
     localDraftAt.value = null; draftNotice.value = ''; retentionNotice = ''
     try {
@@ -140,6 +142,24 @@ export function useAtelierDocument(options: Options) {
     if (remove(target.value)) { recovery.value = null; localDraftAt.value = null }
   }
 
+  async function navigateToWork(id: string, current: number) {
+    if (disposed || current !== generation) return
+    redirecting.value = true
+    navigationError.value = ''
+    try {
+      await options.replaceWorkId(id)
+    } catch (cause) {
+      if (!disposed && current === generation) navigationError.value = errorMessage(cause)
+    } finally {
+      if (!disposed && current === generation) redirecting.value = false
+    }
+  }
+
+  async function retryNavigation() {
+    if (disposed || loading.value || redirecting.value || !navigationError.value || !work.value) return
+    await navigateToWork(work.value.id, generation)
+  }
+
   async function save() {
     if (disposed || loading.value || loadError.value || recovery.value || saveState.value === 'saving' || !title.value.trim() || conflict.value) return
     const current = generation
@@ -181,11 +201,9 @@ export function useAtelierDocument(options: Options) {
       // Preview generation is optional. An image callback cannot invalidate a
       // database acknowledgment or resurrect the already confirmed request.
       try { options.onSaved?.(result.work) } catch { /* The preview owner reports its own errors. */ }
-      if (creating) {
-        redirecting.value = true
-        try { await options.replaceWorkId(result.work.id) }
-        finally { if (current === generation && !disposed) redirecting.value = false }
-      }
+      // Navigation has its own outcome. A confirmed database write remains saved
+      // even when a route guard rejects moving to the new work's address.
+      if (creating) await navigateToWork(result.work.id, current)
     } catch (cause) {
       if (current !== generation || disposed) return
       applying = false
@@ -207,8 +225,8 @@ export function useAtelierDocument(options: Options) {
   }, { flush: 'sync' })
   onScopeDispose(() => { persistDraft(); disposed = true; generation++ })
   return {
-    config, title, description, inspirationId, work, loading, loadError, saveError, saveState, baseline,
+    config, title, description, inspirationId, work, loading, loadError, saveError, navigationError, saveState, baseline,
     conflict, expired, redirecting, dirty, recovery, draftNotice, localDraftAt, pendingSave,
-    load, save, restoreDraft, discardDraft, persistDraft,
+    load, save, retryNavigation, restoreDraft, discardDraft, persistDraft,
   }
 }
