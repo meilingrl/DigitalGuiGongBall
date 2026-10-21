@@ -12,7 +12,7 @@ import AtelierParameters from '../components/atelier/AtelierParameters.vue'
 import { templates } from '../../shared/design'
 import { useAtelierDocument } from '../composables/useAtelierDocument'
 import { downloadBlob, imageDataUrlToBlob } from '../lib/download'
-import { useAppStore } from '../stores/app'
+import { usePreferencesStore } from '../stores/preferences'
 import { useAuthStore } from '../stores/auth'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -23,7 +23,7 @@ import { replaceAtelierWorkId } from '../lib/atelierNavigation'
 
 const route = useRoute()
 const router = useRouter()
-const app = useAppStore()
+const app = usePreferencesStore()
 const auth = useAuthStore()
 const scene = ref<InstanceType<typeof AtelierScene> | null>(null)
 const ready = ref(false)

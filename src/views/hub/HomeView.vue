@@ -7,9 +7,9 @@ import AtelierScene from '../../components/AtelierScene.vue'
 import WorkThumbnail from '../../components/WorkThumbnail.vue'
 import { api, errorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth'
-import { useAppStore } from '../../stores/app'
+import { usePreferencesStore } from '../../stores/preferences'
 const auth = useAuthStore()
-const app = useAppStore()
+const app = usePreferencesStore()
 const works = ref<Work[]>([])
 const total = ref(0)
 const loading = ref(false)

@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import type { InspirationId } from './inspirations.js'
+import { templateIdSchema, type TemplateId } from './templateId.js'
 
-export const templateIdSchema = z.enum(['linglong', 'ruyi', 'lianhua'])
+export { templateIdSchema, type TemplateId } from './templateId.js'
+
 export const designConfigSchema = z.strictObject({
   schemaVersion: z.literal(1),
   templateId: templateIdSchema,
@@ -18,7 +20,6 @@ export const designConfigSchema = z.strictObject({
 })
 
 export type DesignConfig = z.infer<typeof designConfigSchema>
-export type TemplateId = DesignConfig['templateId']
 
 export interface User {
   id: string

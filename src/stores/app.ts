@@ -1,12 +1,14 @@
 import { computed, ref } from 'vue'
-import { defineStore } from 'pinia'
-import { templates, text, type Locale } from '../data/content'
+import { defineStore, storeToRefs } from 'pinia'
+import { templates, text } from '../data/content'
+import { usePreferencesStore } from './preferences'
 
-export type ThemeMode = 'light' | 'dark'
+export type { ThemeMode } from './preferences'
 
 export const useAppStore = defineStore('app', () => {
-  const locale = ref<Locale>('zh')
-  const theme = ref<ThemeMode>('light')
+  const preferences = usePreferencesStore()
+  const { locale, theme } = storeToRefs(preferences)
+  const { initTheme, toggleTheme, setTheme, toggleLocale, setLocale } = preferences
   const displayName = ref('林锐')
   const selectedTemplateId = ref<string>(templates[0].id)
   const layerDepth = ref(3)
@@ -23,41 +25,6 @@ export const useAppStore = defineStore('app', () => {
   const selectedTemplate = computed(() =>
     templates.find((item) => item.id === selectedTemplateId.value) ?? templates[0],
   )
-
-  function toggleLocale() {
-    locale.value = locale.value === 'zh' ? 'en' : 'zh'
-  }
-
-  function setLocale(next: Locale) {
-    locale.value = next
-  }
-
-  function initTheme() {
-    if (typeof window === 'undefined') return
-    const saved = window.localStorage.getItem('theme') as ThemeMode | null
-    if (saved === 'light' || saved === 'dark') {
-      theme.value = saved
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      theme.value = 'dark'
-    } else {
-      theme.value = 'light'
-    }
-  }
-
-  function toggleTheme() {
-    const next: ThemeMode = theme.value === 'light' ? 'dark' : 'light'
-    theme.value = next
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('theme', next)
-    }
-  }
-
-  function setTheme(mode: ThemeMode) {
-    theme.value = mode
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('theme', mode)
-    }
-  }
 
   function selectTemplate(id: string) {
     selectedTemplateId.value = id

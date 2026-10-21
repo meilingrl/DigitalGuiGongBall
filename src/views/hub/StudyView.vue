@@ -5,10 +5,10 @@ import { templates, type DesignConfig } from '../../../shared/design'
 import AtelierScene from '../../components/AtelierScene.vue'
 import CultureImage from '../../components/culture/CultureImage.vue'
 import { createObservationConfig, findStudy, studies, studyCreationPath, type ObservationMode } from '../../data/studies'
-import { useAppStore } from '../../stores/app'
+import { usePreferencesStore } from '../../stores/preferences'
 
 const route = useRoute()
-const app = useAppStore()
+const app = usePreferencesStore()
 const study = computed(() => findStudy(route.params.id))
 const config = ref<DesignConfig>()
 const mode = ref<ObservationMode>('whole')

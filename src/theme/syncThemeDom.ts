@@ -1,12 +1,12 @@
 import { watch } from 'vue'
-import { useAppStore } from '../stores/app'
+import { usePreferencesStore } from '../stores/preferences'
 
 /**
  * Pinia theme → <html class="dark"> + data-theme + color-scheme
  * 不再给 body/#app 写死内联背景，避免与 Vue 根节点类名「锁死」在浅色。
  */
 export function installThemeDomSync() {
-  const store = useAppStore()
+  const store = usePreferencesStore()
 
   watch(
     () => store.theme,

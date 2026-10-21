@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { TemplateId } from './design.js'
+import type { TemplateId } from './templateId.js'
 
 export const inspirationIdSchema = z.enum(['nested-structure', 'openwork-rhythm', 'digital-heritage'])
 export type InspirationId = z.infer<typeof inspirationIdSchema>

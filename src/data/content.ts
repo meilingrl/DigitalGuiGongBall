@@ -1,4 +1,5 @@
-export type Locale = 'zh' | 'en'
+import type { Locale } from '../stores/preferences'
+export type { Locale } from '../stores/preferences'
 
 export type TemplateCategory = 'geometric' | 'dragon' | 'floral' | 'figure' | 'auspicious' | 'abstract'
 export type TemplateStyle = 'traditional' | 'modern' | 'mixed'

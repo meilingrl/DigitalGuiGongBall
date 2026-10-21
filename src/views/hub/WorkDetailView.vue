@@ -10,10 +10,10 @@ import { api, ApiError, errorMessage } from '../../lib/api'
 import { cloneDesign } from '../../lib/draft'
 import { loginPath } from '../../lib/journey'
 import { useAuthStore } from '../../stores/auth'
-import { useAppStore } from '../../stores/app'
+import { usePreferencesStore } from '../../stores/preferences'
 const route = useRoute()
 const auth = useAuthStore()
-const app = useAppStore()
+const app = usePreferencesStore()
 const work = ref<Work | null>(null)
 const viewConfig = ref<DesignConfig | null>(null)
 const scene = ref<InstanceType<typeof AtelierScene> | null>(null)

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { useAppStore } from './stores/app'
+import { usePreferencesStore } from './stores/preferences'
 
-const store = useAppStore()
+const store = usePreferencesStore()
 const { theme } = storeToRefs(store)
 </script>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useAppStore } from '../stores/app'
+import { computed } from 'vue'
+import { usePreferencesStore } from '../stores/preferences'
 
 withDefaults(
   defineProps<{
@@ -11,7 +12,8 @@ withDefaults(
   { layout: 'fixed', size: 'md' },
 )
 
-const store = useAppStore()
+const store = usePreferencesStore()
+const label = computed(() => store.locale === 'zh' ? '切换昼夜模式' : 'Toggle day/night mode')
 </script>
 
 <template>
@@ -23,8 +25,8 @@ const store = useAppStore()
       layout === 'inline' && size === 'sm' ? 'h-8 w-8' : '',
       layout === 'inline' && size === 'md' ? 'h-10 w-10 text-base' : '',
     ]"
-    :aria-label="store.t.themeToggleAria"
-    :title="store.t.themeToggleAria"
+    :aria-label="label"
+    :title="label"
     @click.stop="store.toggleTheme"
   >
     <!-- 使用内联 SVG，避免 emoji 在部分系统上导致按钮状态不易辨认 -->

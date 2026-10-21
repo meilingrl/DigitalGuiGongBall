@@ -3,10 +3,10 @@
  * 可随鼠标交互的波浪线条背景，参考 PanelLab WavyLines / JIEJOE-WEB-Tutorial/016-wavy-lines
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useAppStore } from '../stores/app'
+import { usePreferencesStore } from '../stores/preferences'
 import { storeToRefs } from 'pinia'
 
-const store = useAppStore()
+const store = usePreferencesStore()
 const { theme } = storeToRefs(store)
 
 const containerRef = ref<HTMLElement | null>(null)
