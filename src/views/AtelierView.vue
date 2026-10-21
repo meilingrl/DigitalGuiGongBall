@@ -116,6 +116,14 @@ const recoveryTime = computed(() =>
 async function reloadWork() {
   if (!dirty.value || (await confirmDiscard('reload'))) void load(true)
 }
+function onSceneReady() {
+  ready.value = true
+  sceneError.value = ''
+}
+function onSceneError(message: string) {
+  ready.value = false
+  sceneError.value = message
+}
 function retryScene() {
   ready.value = false
   sceneError.value = ''
@@ -263,14 +271,8 @@ watch(
           ref="scene"
           :config="config"
           :theme="app.theme"
-          @ready="
-            ready = true
-            sceneError = ''
-          "
-          @error="
-            ready = false
-            sceneError = $event
-          "
+          @ready="onSceneReady"
+          @error="onSceneError"
         />
         <div class="stage-label">
           <span class="eyebrow">{{ template.subtitle }}</span>
