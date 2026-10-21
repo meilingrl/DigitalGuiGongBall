@@ -84,9 +84,10 @@ API 写请求必须携带允许的 `Origin`。浏览器自动携带；自行用 
 
 `Vue 3 / Pinia / Vue Router → 同源 Express 5 API → SQLite 文件`；Three.js 在浏览器根据共享配置生成结构。运行时 Zod 校验放在 `shared/design.ts`，配置带 `schemaVersion`。文化来源 `inspirationId` 为独立作品元数据，设计配置仍为 v1。
 
-- `src/views/AtelierView.vue` 与 `src/composables/`：页面、文档与列表生命周期分别管理；正式保存、未确认请求重试、显式草稿恢复、迟到响应隔离。
+- `src/views/AtelierView.vue` 与 `src/composables/`：页面、文档与列表生命周期分别管理；正式保存、未确认请求重试、显式草稿恢复、迟到响应隔离。保存确认与后续导航分别处理失败，导航重试不重复写入；`AtelierParameters.vue` 只通过配置输入/更新管理控件。
 - `src/data/studies.ts` 与 `shared/inspirations.ts`：导览内容、稳定来源 ID 和模板关联；静态编辑内容，无 CMS 或阅读进度服务。
-- `src/three/`：独立几何生成、取景与 GPU 资源释放；预览复用现有渲染器离屏捕获指定配置，恢复实时场景后再上传图片。
+- `src/three/`：Stage 管理实时交互，`previewCapture.ts` 通过明确上下文与 GPU/编码接口捕获指定配置，恢复场景并释放临时资源；`layerSpec.ts` 统一实时模型、预览和取景规格，复用同一 WebGL 上下文。
+- `src/stores/preferences.ts`：独立管理主题/语言，旧课程 store 委托同一状态；新页面不再为主题加载课程数据。`shared/templateId.ts` 是模板标识基础模块，共享契约无类型引用环。
 - `server/`：迁移、密码/会话、归属权限、校验、种子和启动；SQL 使用参数绑定。
 - `users / sessions / works / work_previews / mutation_journal / schema_migrations`：作品查询与更新均包含 owner 条件，旧版本写入返回 409。
 
@@ -138,6 +139,7 @@ DATABASE_PATH=./data/imported-works.sqlite npm start
 
 ```bash
 npm run typecheck
+npm run typecheck:tests # 单独检查 tests/ 与 server/tests/ 的 strict 类型；上一命令已包含
 npm test
 npm run build:all
 npm run test:restart  # 先构建；独立临时库与编译后进程，含正常退出和 SIGKILL 后恢复
@@ -146,7 +148,7 @@ npm audit --omit=dev
 
 测试包括真实 HTTP/临时 SQLite、跨账号权限、版本与幂等重放、图片格式/归属/版本、v1/v2/v3 迁移与备份、设备草稿兼容、配置带入、异步生命周期、几何与资源释放。HTTP 集成检查包含提交后响应丢失、重启与重登重试；编译后进程测试包含 SIGTERM/SIGKILL 恢复。
 
-2026-10-21：Node 22.13.1 和 26.4.0 各 207 项通过，类型检查与前后端构建通过。代理另在本机 IAB 浏览器完成约 1440×900 桌面和 391×844 移动视口主流程、WebGL 操作、草稿确认/恢复及深浅图片重生成检查；CI 执行上述自动化命令，不运行浏览器、真实手机或生产负载测试。细节及独立审查见 [整合记录](docs/INTEGRATION_20261021.md)。
+2026-10-21 工程重构后：Node 22.13.1 和 26.4.0 各 246 项通过，完整类型门禁包含测试代码。类型运行器不代替类型检查；公开捕获接口的测试使用真实 Three 对象，只替换 GPU/编码边界。浏览器与进程验证、独立审查和具体检查点见 [重构记录](docs/REFACTOR_20261021.md)，此前产品整合证据见 [整合记录](docs/INTEGRATION_20261021.md)。CI 不运行浏览器、真实手机或生产负载测试。
 
 ## 范围与已知限制
 
