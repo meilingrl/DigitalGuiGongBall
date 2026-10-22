@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { DesignConfig } from '../../shared/design'
+import { cloneDesign } from '../lib/draft'
 import { createOrnamentLayers } from './ornament'
 import { disposeObject } from './resources'
 import { getStageLayout } from './layout'
@@ -43,7 +44,7 @@ export class AtelierStage {
   constructor(container: HTMLElement, config: DesignConfig, theme: Theme, events: StageEvents) {
     this.container = container
     this.events = events
-    this.config = { ...config }
+    this.config = cloneDesign(config)
     this.theme = theme
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true })
@@ -157,7 +158,7 @@ export class AtelierStage {
     this.layers = []
     const nextLayers = createOrnamentLayers(this.config)
     this.layers = nextLayers
-    this.renderedConfig = { ...this.config }
+    this.renderedConfig = cloneDesign(this.config)
     for (const layer of this.layers) {
       const material = layer.material as THREE.MeshPhysicalMaterial
       material.clippingPlanes = [this.clipPlane]
@@ -175,7 +176,7 @@ export class AtelierStage {
   setConfig(config: DesignConfig) {
     if (this.destroyed) return
     const previous = this.config
-    this.config = { ...config }
+    this.config = cloneDesign(config)
     const topologyChanged = !sameTopology(previous, config)
     if (topologyChanged) {
       clearTimeout(this.rebuildTimer)

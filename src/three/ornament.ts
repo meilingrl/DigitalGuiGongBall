@@ -1,5 +1,6 @@
 import { BufferGeometry, Float32BufferAttribute, Mesh, MeshPhysicalMaterial, Vector3 } from 'three'
 import type { DesignConfig } from '../../shared/design'
+import { getLayerPattern } from '../../shared/layerDesign'
 import { layerMaterialParameters, layerRadius, setLayerRotation } from './layerSpec'
 export { materialPresets } from './layerSpec'
 
@@ -132,7 +133,7 @@ export function createOrnamentLayers(config: DesignConfig): Mesh[] {
   return Array.from({ length: config.layers }, (_, index) => {
     const radius = layerRadius(index, config.layers)
     const material = new MeshPhysicalMaterial(layerMaterialParameters(config.material, index))
-    const mesh = new Mesh(createShellGeometry(config, radius), material)
+    const mesh = new Mesh(createShellGeometry(getLayerPattern(config, index), radius), material)
     mesh.name = `openwork-layer-${index + 1}`
     mesh.userData.layer = index + 1
     mesh.userData.radius = radius

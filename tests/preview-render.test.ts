@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Color, Group, Mesh, MeshPhysicalMaterial, PerspectiveCamera, Plane, Scene, HalfFloatType, Vector3, Vector4, WebGLRenderTarget } from 'three'
 import { defaultConfig, type DesignConfig } from '../shared/design'
+import { withLayerPattern } from '../shared/layerDesign'
 import { createOrnamentLayers } from '../src/three/ornament'
 import { disposeObject } from '../src/three/resources'
 import * as preview from '../src/three/preview'
@@ -63,6 +64,89 @@ test('temporary geometry is released exactly once after a distinct retry config 
   snapshot.dispose()
   snapshot.dispose()
   assert.equal(disposed, 1)
+})
+
+for (const role of ['outer', 'inner'] as const) {
+  for (const patch of [{ templateId: 'lianhua' as const }, { patternScale: 16 }, { aperture: 0.75 }]) {
+    test(`preview rebuilds same-count ${role} ${Object.keys(patch)[0]} changes instead of borrowing stale geometry`, () => {
+      const rendered = withLayerPattern({ ...defaultConfig, layers: 3, patternScale: 8 }, 'inner', { templateId: 'ruyi' })
+      const live = createOrnamentLayers(rendered)
+      const requested = withLayerPattern(rendered, role, patch)
+      const snapshot = preview.createPreviewObject(requested, rendered, live, new Plane())
+      let temporaryDisposals = 0
+      let liveDisposals = 0
+      try {
+        assert.equal(preview.sameTopology(rendered, requested), false)
+        snapshot.group.children.forEach((shell, index) => {
+          assert.ok(shell instanceof Mesh)
+          assert.notEqual(shell.geometry, live[index]!.geometry)
+          const a = shell.geometry.getAttribute('position').array
+          const b = live[index]!.geometry.getAttribute('position').array
+          const equal = a.length === b.length && a.every((value: number, offset: number) => value === b[offset])
+          assert.equal(equal, index !== (role === 'outer' ? 0 : 2))
+          shell.geometry.addEventListener('dispose', () => temporaryDisposals++)
+          live[index]!.geometry.addEventListener('dispose', () => liveDisposals++)
+        })
+        snapshot.dispose()
+        snapshot.dispose()
+        assert.equal(temporaryDisposals, 3)
+        assert.equal(liveDisposals, 0)
+      } finally {
+        snapshot.dispose()
+        live.forEach(disposeObject)
+      }
+    })
+  }
+}
+
+test('topology compares effective middle layers while two-layer shells ignore the unused root pattern', () => {
+  const two = withLayerPattern({ ...defaultConfig, layers: 2 }, 'outer', {})
+  const changedRoot = { ...two, templateId: 'lianhua' as const, patternScale: 20, aperture: 0.7 }
+  assert.equal(preview.sameTopology(two, changedRoot), true)
+  assert.equal(preview.sameTopology({ ...two, layers: 4 }, { ...changedRoot, layers: 4 }), false)
+  assert.equal(preview.sameTopology(two, { ...two, layers: 3 }), false)
+  assert.equal(preview.sameTopology(undefined, two), false)
+})
+
+test('v1 and equivalent v2 reuse geometry across material and observation changes', () => {
+  const rendered = { ...defaultConfig, layers: 2, patternScale: 8 }
+  const requested = { ...withLayerPattern(rendered, 'inner', {}), material: 'bronze' as const,
+    activeLayer: 2, separation: 1, cutaway: true, autoRotate: true }
+  const live = createOrnamentLayers(rendered)
+  const snapshot = preview.createPreviewObject(requested, rendered, live, new Plane())
+  try {
+    assert.equal(preview.sameTopology(rendered, requested), true)
+    assert.equal(preview.sameTopology(requested, rendered), true)
+    snapshot.group.children.forEach((shell, index) => {
+      assert.ok(shell instanceof Mesh)
+      assert.equal(shell.geometry, live[index]!.geometry)
+    })
+  } finally {
+    snapshot.dispose()
+    live.forEach(disposeObject)
+  }
+})
+
+test('an older layer-pattern retry rebuilds its own motif without disposing newer live shells', () => {
+  const old = withLayerPattern({ ...defaultConfig, layers: 2, patternScale: 8 }, 'outer', { templateId: 'lianhua' })
+  const current = withLayerPattern(old, 'outer', { templateId: 'ruyi' })
+  const live = createOrnamentLayers(current)
+  const snapshot = preview.createPreviewObject(old, current, live, new Plane())
+  let liveDisposals = 0
+  live.forEach(shell => shell.geometry.addEventListener('dispose', () => liveDisposals++))
+  try {
+    const outer = snapshot.group.children[0]
+    assert.ok(outer instanceof Mesh)
+    assert.notEqual(outer.geometry, live[0]!.geometry)
+    const vertex = outer.geometry.getAttribute('position')
+    const actual = [vertex.getX(4), vertex.getY(4), vertex.getZ(4)]
+    const expected = [0.60077207, 1.44396287, 0.41312698]
+    actual.forEach((value, axis) => assert.ok(Math.abs(value - expected[axis]!) < 1e-6))
+  } finally {
+    snapshot.dispose()
+    assert.equal(liveDisposals, 0)
+    live.forEach(disposeObject)
+  }
 })
 
 test('GPU readback rows become upright without modifying the source pixel buffer', () => {

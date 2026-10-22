@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Group, Mesh, MeshBasicMaterial, Raycaster, Texture, Vector3 } from 'three'
-import { defaultConfig } from '../shared/design'
+import { defaultConfig, type DesignConfigV2 } from '../shared/design'
+import { withLayerPattern } from '../shared/layerDesign'
 import { createOrnamentLayers, createShellGeometry } from '../src/three/ornament'
 import { disposeObject } from '../src/three/resources'
 import { getStageLayout } from '../src/three/layout'
@@ -110,3 +111,64 @@ test('camera fits every separated shell in a portrait viewport and follows a foc
   assert.equal(focused.target.x, focused.positions[5]!.x)
   assert.ok(getStageLayout({ ...separated, separation: 0 }, 1).positions.every((position) => position.length() === 0))
 })
+
+for (const layers of [2, 4]) {
+  test(`${layers} shells use outer and inner patterns with distinct physical motifs and decreasing radii`, () => {
+    const config: DesignConfigV2 = {
+      ...defaultConfig, schemaVersion: 2, layers, patternScale: 8,
+      layerPatterns: {
+        outer: { templateId: 'lianhua', patternScale: 8, aperture: 0.7 },
+        inner: { templateId: 'ruyi', patternScale: 8, aperture: 0.4 },
+      },
+    }
+    const shells = createOrnamentLayers(config)
+    // Outer surface vertex at motif angle pi/16, normalized to radius 1.6.
+    // Fixtures follow the three motif curves; root linglong remains on middle shells.
+    const fixtures = {
+      lianhua: [0.60077207, 1.44396287, 0.41312698],
+      ruyi: [0.59643575, 1.44251338, 0.42432216],
+      linglong: [0.58433772, 1.43876123, 0.45292972],
+    }
+    let disposedGeometry = 0
+    let disposedMaterial = 0
+    try {
+      let previousRadius = Infinity
+      shells.forEach((shell, index) => {
+        const radius = shell.userData.radius as number
+        assert.ok(radius < previousRadius)
+        previousRadius = radius
+        const motif = index === 0 ? 'lianhua' : index === layers - 1 ? 'ruyi' : 'linglong'
+        const position = shell.geometry.getAttribute('position')
+        const actual = [position.getX(4), position.getY(4), position.getZ(4)]
+        actual.forEach((value, axis) => assert.ok(Math.abs(value * 1.6 / radius - fixtures[motif][axis]!) < 1e-6,
+          `layer ${index} must use its effective ${motif} motif`))
+        shell.geometry.addEventListener('dispose', () => disposedGeometry++)
+        assert.ok(!Array.isArray(shell.material))
+        shell.material.addEventListener('dispose', () => disposedMaterial++)
+      })
+    } finally {
+      shells.forEach(disposeObject)
+    }
+    assert.equal(disposedGeometry, layers)
+    assert.equal(disposedMaterial, layers)
+  })
+
+  for (const patch of [{ templateId: 'lianhua' as const }, { patternScale: 16 }, { aperture: 0.75 }]) {
+    test(`${layers} shells: changing outer ${Object.keys(patch)[0]} alters only the outer physical geometry`, () => {
+      const config = withLayerPattern({ ...defaultConfig, layers, patternScale: 8 }, 'inner', { templateId: 'ruyi' })
+      const before = createOrnamentLayers(config)
+      const after = createOrnamentLayers(withLayerPattern(config, 'outer', patch))
+      try {
+        before.forEach((shell, index) => {
+          const a = shell.geometry.getAttribute('position').array
+          const b = after[index]!.geometry.getAttribute('position').array
+          const equal = a.length === b.length && a.every((value, offset) => value === b[offset])
+          assert.equal(equal, index !== 0, `unexpected geometry change at layer ${index}`)
+        })
+      } finally {
+        before.forEach(disposeObject)
+        after.forEach(disposeObject)
+      }
+    })
+  }
+}

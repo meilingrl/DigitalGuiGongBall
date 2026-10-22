@@ -1,12 +1,19 @@
 import { Group, Mesh, MeshPhysicalMaterial, type Plane } from 'three'
 import type { DesignConfig } from '../../shared/design'
+import { getLayerPattern } from '../../shared/layerDesign'
 import { getStageLayout } from './layout'
 import { createShellGeometry } from './ornament'
 import { layerMaterialParameters, layerRadius, setLayerRotation } from './layerSpec'
 
 export function sameTopology(a: DesignConfig | undefined, b: DesignConfig): boolean {
-  return !!a && a.templateId === b.templateId && a.layers === b.layers
-    && a.patternScale === b.patternScale && a.aperture === b.aperture
+  if (!a || a.layers !== b.layers) return false
+  for (let index = 0; index < b.layers; index++) {
+    const first = getLayerPattern(a, index)
+    const second = getLayerPattern(b, index)
+    if (first.templateId !== second.templateId || first.patternScale !== second.patternScale
+      || first.aperture !== second.aperture) return false
+  }
+  return true
 }
 
 /** An isolated snapshot never advances animation or borrows a mutable live material. */
@@ -33,7 +40,7 @@ export function createPreviewObject(config: DesignConfig, renderedConfig: Design
       let mesh: Mesh
       try {
         const geometry = reuseGeometry ? liveLayers[index]!.geometry
-          : createShellGeometry(config, layerRadius(index, config.layers))
+          : createShellGeometry(getLayerPattern(config, index), layerRadius(index, config.layers))
         mesh = new Mesh(geometry, material)
       } catch (error) {
         material.dispose()
