@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import type { DesignConfig, Work } from '../../../shared/design'
+import { templates, type DesignConfig, type Work } from '../../../shared/design'
+import { getLayerPattern } from '../../../shared/layerDesign'
 import { findInspiration } from '../../../shared/inspirations'
 import AtelierScene from '../../components/AtelierScene.vue'
 import WorkThumbnail from '../../components/WorkThumbnail.vue'
@@ -23,6 +24,17 @@ const loading = ref(true)
 const error = ref('')
 const expired = ref(false)
 const inspiration = computed(() => findInspiration(work.value?.inspirationId))
+const layerSummaries = computed(() => {
+  const config = work.value?.config
+  if (!config || config.schemaVersion !== 2) return []
+  return [
+    { name: '外层纹样', pattern: getLayerPattern(config, 0) },
+    { name: '内层纹样', pattern: getLayerPattern(config, config.layers - 1) },
+  ]
+})
+function templateName(id: DesignConfig['templateId']) {
+  return templates.find(template => template.id === id)!.name
+}
 const previews = useWorkPreview({
   userId: auth.user!.id,
   capture: (config) => scene.value?.exportPreview(config)
@@ -159,7 +171,26 @@ onBeforeUnmount(() => {
                 }}
               </dd>
             </div>
-            <div>
+            <template v-if="work.config.schemaVersion === 2">
+              <div v-for="layer in layerSummaries" :key="layer.name">
+                <dt>{{ layer.name }}</dt>
+                <dd>
+                  {{ templateName(layer.pattern.templateId) }} · 密度
+                  {{ layer.pattern.patternScale }} · 开孔
+                  {{ Math.round(layer.pattern.aperture * 100) }}%
+                </dd>
+              </div>
+              <div>
+                <dt>中间层规则</dt>
+                <dd>
+                  沿用起始参数：{{ templateName(work.config.templateId) }} · 密度
+                  {{ work.config.patternScale }} · 开孔
+                  {{ Math.round(work.config.aperture * 100) }}%
+                  <span v-if="work.config.layers === 2">（当前无中间层）</span>
+                </dd>
+              </div>
+            </template>
+            <div v-else>
               <dt>纹样密度 / 开孔</dt>
               <dd>
                 {{ work.config.patternScale }} /
@@ -316,6 +347,12 @@ onBeforeUnmount(() => {
 }
 .detail-story dt {
   color: var(--studio-muted);
+  flex-shrink: 0;
+}
+.detail-story dd {
+  margin: 0;
+  text-align: right;
+  line-height: 1.8;
 }
 .detail-origin {
   margin-top: 28px;

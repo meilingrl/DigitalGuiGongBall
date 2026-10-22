@@ -4,6 +4,8 @@ import { effectScope, nextTick, type Ref } from 'vue'
 import { defaultConfigs, type DesignConfig, type Work } from '../shared/design.js'
 import { ApiError } from '../src/lib/api.js'
 import { cloneDesign } from '../src/lib/draft.js'
+import { withLayerPattern } from '../shared/layerDesign.js'
+import { readDraft } from '../src/lib/drafts.js'
 import { useAtelierDocument } from '../src/composables/useAtelierDocument.js'
 import type { ApiOptions } from '../src/lib/api.js'
 import { makeWork } from './helpers/work.js'
@@ -447,3 +449,84 @@ test('a replacement parameter model synchronously clamps focus and persists the 
     assert.equal(stored.config.material, 'jade')
   } finally { h.unmount() }
 })
+
+for (const existing of [false, true]) {
+  const method = existing ? 'PUT' : 'POST'
+
+  test(`${method} saves both v2 roles while newer inner edits remain a recoverable draft`, async () => {
+    const h = await createEditor(existing)
+    try {
+      h.editor.config.value = withLayerPattern(
+        withLayerPattern(h.editor.config.value, 'outer', { templateId: 'lianhua', patternScale: 10, aperture: .7 }),
+        'inner', { templateId: 'ruyi', patternScale: 20, aperture: .4 },
+      )
+      const submitted = cloneDesign(h.editor.config.value)
+      const saving = h.editor.save()
+      h.editor.config.value = withLayerPattern(h.editor.config.value, 'inner', { patternScale: 22, aperture: .45 })
+      h.editor.config.value = { ...h.editor.config.value, layers: 2, material: 'jade' }
+      const target = existing ? `work:${originalWork.id}` : 'new:linglong'
+      const stored = readDraft(h.storage, 'user-a', target).draft!
+      assert.equal(stored.config.schemaVersion, 2)
+      assert.equal(stored.config.layers, 2)
+      assert.deepEqual(stored.config.schemaVersion === 2 && stored.config.layerPatterns, {
+        outer: { templateId: 'lianhua', patternScale: 10, aperture: .7 },
+        inner: { templateId: 'ruyi', patternScale: 22, aperture: .45 },
+      })
+      assert.deepEqual(stored.pendingSave!.body.config, submitted)
+      assert.deepEqual(h.mutations[0]!.body.config, submitted)
+      h.settleSuccess()
+      await saving
+      assert.deepEqual(h.editor.work.value!.config, submitted)
+      assert.equal(h.editor.config.value.layers, 2)
+      assert.equal(h.editor.config.value.material, 'jade')
+      assert.equal(h.editor.dirty.value, true)
+      const savedTarget = existing ? `work:${originalWork.id}` : 'work:created-work'
+      const draft = readDraft(h.storage, 'user-a', savedTarget).draft!
+      assert.deepEqual(draft.config, cloneDesign(h.editor.config.value))
+      assert.equal(draft.pendingSave, null)
+      const latest = cloneDesign(h.editor.config.value)
+      const nextSave = h.editor.save()
+      assert.deepEqual(h.mutations[1]!.body.config, latest)
+      assert.notEqual(h.mutations[1]!.key, h.mutations[0]!.key)
+      h.settleSuccess(1)
+      await nextSave
+      assert.deepEqual(h.editor.work.value!.config, latest)
+      assert.equal(h.editor.dirty.value, false)
+      assert.equal(h.storage.length, 0)
+    } finally { h.unmount() }
+  })
+
+  for (const version of [1, 2]) {
+    test(`${method} restores v2 layer edits and replays its original v${version} pending request unchanged`, async () => {
+      const h = await createEditor(existing)
+      h.editor.title.value = '等待确认的请求'
+      if (version === 2) {
+        h.editor.config.value = withLayerPattern(h.editor.config.value, 'outer', { templateId: 'lianhua', patternScale: 10, aperture: .7 })
+      }
+      const saving = h.editor.save()
+      const originalBody = JSON.parse(JSON.stringify(h.mutations[0]!.body))
+      const key = h.mutations[0]!.key
+      h.editor.config.value = withLayerPattern(h.editor.config.value, 'inner', { templateId: 'ruyi', patternScale: 20, aperture: .4 })
+      const edited = cloneDesign(h.editor.config.value)
+      h.mutations[0]!.reject(new ApiError('连接中断'))
+      await saving
+      h.unmount()
+      const recovered = await createEditor(existing, h.storage)
+      try {
+        assert.equal(recovered.editor.config.value.schemaVersion, 1, 'recovery must wait for explicit user intent')
+        assert.deepEqual(recovered.editor.recovery.value!.config, edited)
+        recovered.editor.restoreDraft()
+        assert.deepEqual(cloneDesign(recovered.editor.config.value), edited)
+        const retry = recovered.editor.save()
+        assert.equal(recovered.mutations[0]!.key, key)
+        assert.deepEqual(recovered.mutations[0]!.body, originalBody)
+        recovered.settleSuccess()
+        await retry
+        assert.deepEqual(recovered.editor.work.value!.config, originalBody.config)
+        assert.deepEqual(cloneDesign(recovered.editor.config.value), edited)
+        assert.equal(recovered.editor.dirty.value, true)
+        assert.equal(recovered.editor.pendingSave.value, null)
+      } finally { recovered.unmount() }
+    })
+  }
+}

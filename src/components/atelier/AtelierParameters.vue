@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { DesignConfig } from '../../../shared/design'
+import LayerPatternEditor from './LayerPatternEditor.vue'
 
 const config = defineModel<DesignConfig>({ required: true })
 
@@ -15,8 +16,6 @@ function parameter<Key extends keyof DesignConfig>(key: Key) {
   })
 }
 const layers = parameter('layers')
-const patternScale = parameter('patternScale')
-const aperture = parameter('aperture')
 const separation = parameter('separation')
 const cutaway = parameter('cutaway')
 const activeLayer = parameter('activeLayer')
@@ -41,30 +40,7 @@ const selectedMaterial = parameter('material')
         step="1"
       />
     </label>
-    <label class="control-label">
-      纹样密度
-      <output>{{ config.patternScale }}</output>
-      <input
-        v-model.number="patternScale"
-        aria-label="纹样密度"
-        type="range"
-        min="8"
-        max="24"
-        step="1"
-      />
-    </label>
-    <label class="control-label">
-      开孔尺度
-      <output>{{ Math.round(config.aperture * 100) }}%</output>
-      <input
-        v-model.number="aperture"
-        aria-label="开孔尺度"
-        type="range"
-        min=".35"
-        max=".8"
-        step=".01"
-      />
-    </label>
+    <LayerPatternEditor v-model="config" />
   </section>
   <section class="control-section">
     <div class="control-heading">
