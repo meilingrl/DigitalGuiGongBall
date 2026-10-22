@@ -351,3 +351,28 @@ test('rejects trailing newlines in identities and targets before accessing stora
   assert.equal(storage.reads.length, 0)
   assert.equal(storage.removals.length, 0)
 })
+
+test('v2 edits and pending v1 or v2 payloads retain separate complete configs through storage', () => {
+  const config = {
+    ...defaultConfigs.linglong, schemaVersion: 2 as const,
+    layerPatterns: {
+      outer: { templateId: 'lianhua' as const, patternScale: 10, aperture: .7 },
+      inner: { templateId: 'ruyi' as const, patternScale: 20, aperture: .4 },
+    },
+  }
+  for (const sentConfig of [defaultConfigs.linglong, config]) {
+    const storage = new MemoryStorage()
+    const body = { title: '待重放', description: '', config: sentConfig }
+    const request: PendingSave = { ...pending(), body, snapshot: JSON.stringify(body) }
+    const originalRequest = JSON.stringify(request)
+    const current = reactive(draft({ config: { ...config, layerPatterns: { outer: { ...config.layerPatterns.outer }, inner: { ...config.layerPatterns.inner, patternScale: 22 } } }, pendingSave: request }))
+    assert.equal(writeDraft(storage, current, now).ok, true)
+    current.config.material = 'bronze'
+    if (current.config.schemaVersion === 2) current.config.layerPatterns.outer.aperture = .8
+    const restored = readDraft(storage, 'alice', current.target, now).draft!
+    assert.deepEqual(restored.config, { ...config, layerPatterns: { outer: config.layerPatterns.outer, inner: { ...config.layerPatterns.inner, patternScale: 22 } } })
+    assert.deepEqual(restored.pendingSave, JSON.parse(originalRequest))
+    assert.equal(JSON.stringify(restored.pendingSave!.body.config), JSON.stringify(sentConfig))
+    assert.doesNotThrow(() => structuredClone(restored))
+  }
+})

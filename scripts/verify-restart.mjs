@@ -82,16 +82,28 @@ try {
   await checkImage(work.id, 1, cookie)
   assert.equal((await request('/api/auth/me', 'GET', undefined, cookie)).data.user.username, 'restart_qa')
   const updateKey = randomUUID()
-  const updateBody = { title: '强制终止后仍存在', description: '', config: { ...config, material: 'jade' }, version: 1 }
+  const updatedConfig = {
+    ...config, schemaVersion: 2, material: 'jade',
+    layerPatterns: {
+      outer: { templateId: 'lianhua', patternScale: 10, aperture: .7 },
+      inner: { templateId: 'ruyi', patternScale: 20, aperture: .4 },
+    },
+  }
+  const updateBody = { title: '强制终止后仍存在', description: '', config: updatedConfig, version: 1 }
   const updated = await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)
+  assert.deepEqual(updated.data.work.config, updatedConfig)
+  assert.equal(updated.data.work.inspirationId, 'digital-heritage')
   const secondPreview = await request(`/api/works/${work.id}/preview`, 'PUT', { version: 2, imageDataUrl }, cookie)
   const copyKey = randomUUID()
   const copied = await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)
+  assert.deepEqual(copied.data.work.config, updatedConfig)
+  assert.equal(copied.data.work.inspirationId, 'digital-heritage')
   const trashKey = randomUUID()
   const trashed = await request(`/api/works/${copied.data.work.id}/trash`, 'POST', { version: 1 }, cookie, trashKey)
   await stop('SIGKILL')
   await start()
   assert.deepEqual((await request(`/api/works/${work.id}`, 'GET', undefined, cookie)).data.work, secondPreview.data.work)
+  assert.deepEqual((await request(`/api/works/${work.id}`, 'GET', undefined, cookie)).data.work.config, updatedConfig)
   await checkImage(work.id, 2, cookie)
   assert.deepEqual((await request(`/api/works/${work.id}`, 'PUT', updateBody, cookie, updateKey)).data.work, updated.data.work)
   assert.deepEqual((await request(`/api/works/${work.id}/duplicate`, 'POST', { version: 2 }, cookie, copyKey)).data.work, copied.data.work)
@@ -104,11 +116,15 @@ try {
   assert.equal(restored.data.work.deletedAt, null)
   assert.equal(restored.data.work.previewVersion, 3)
   assert.equal(restored.data.work.inspirationId, 'digital-heritage')
+  assert.deepEqual(restored.data.work.config, updatedConfig)
   await checkImage(restored.data.work.id, 3, cookie)
   assert.equal((await request('/api/works', 'GET', undefined, cookie)).data.pagination.total, 2)
   const freshLogin = await request('/api/auth/login', 'POST', { username: 'restart_qa', password: 'OnlyForThisTest2026!' })
   const freshCookie = freshLogin.headers.get('set-cookie').split(';')[0]
-  assert.equal((await request(`/api/works/${work.id}`, 'GET', undefined, freshCookie)).data.work.version, 2)
+  const reloggedWork = (await request(`/api/works/${work.id}`, 'GET', undefined, freshCookie)).data.work
+  assert.equal(reloggedWork.version, 2)
+  assert.deepEqual(reloggedWork.config, updatedConfig)
+  assert.equal(reloggedWork.inspirationId, 'digital-heritage')
   const otherLogin = await request('/api/auth/register', 'POST', { username: 'other_restart_qa', displayName: '另一个隔离账号', password: 'OnlyForThisTest2026!' })
   const otherCookie = otherLogin.headers.get('set-cookie').split(';')[0]
   const drift = await fetch(origin + '/api/works', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: otherCookie, 'Idempotency-Key': createKey, 'X-Expected-User-Id': expectedUserId }, body: JSON.stringify(createBody) })
@@ -117,7 +133,7 @@ try {
   const otherList = await fetch(origin + '/api/works', { headers: { Cookie: otherCookie } })
   assert.equal((await otherList.json()).pagination.total, 0)
   assert.equal((await fetch(`${origin}/api/works/${work.id}/preview?version=2`, { headers: { Cookie: otherCookie } })).status, 404)
-  console.log('PASS: empty DB → registration/source/PNG → SIGTERM → create replay/image read → update/PNG/copy/trash → SIGKILL → all replays/images → restore/relogin/principal guard; real compiled HTTP server and SPA fallback')
+  console.log('PASS: empty DB → registration/source/PNG → SIGTERM → v1 create replay/image read → v2 update/PNG/copy/trash → SIGKILL → all replays/images → full v2 restore/relogin/principal guard; real compiled HTTP server and SPA fallback')
 } finally {
   await stop()
   await rm(directory, { recursive: true, force: true })

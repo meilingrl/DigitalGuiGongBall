@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import type { InspirationId } from './inspirations.js'
 import { templateIdSchema, type TemplateId } from './templateId.js'
+import { layerPatternSchema } from './layerPattern.js'
 
 export { templateIdSchema, type TemplateId } from './templateId.js'
 
-export const designConfigSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+const designFields = {
   templateId: templateIdSchema,
   layers: z.number().int().min(2).max(6),
   patternScale: z.number().int().min(8).max(24),
@@ -15,11 +15,24 @@ export const designConfigSchema = z.strictObject({
   cutaway: z.boolean(),
   autoRotate: z.boolean(),
   activeLayer: z.number().int().min(0).max(6),
-}).refine((config) => config.activeLayer <= config.layers, {
-  message: '聚焦层不能超过球体层数', path: ['activeLayer'],
-})
+}
 
-export type DesignConfig = z.infer<typeof designConfigSchema>
+const validActiveLayer = (config: { activeLayer: number; layers: number }) => config.activeLayer <= config.layers
+const activeLayerError = { message: '聚焦层不能超过球体层数', path: ['activeLayer'] }
+
+// Keep v1 keys and ordering intact: parsed requests also feed draft and replay snapshots.
+const designConfigV1Schema = z.strictObject({
+  schemaVersion: z.literal(1), ...designFields,
+}).refine(validActiveLayer, activeLayerError)
+const designConfigV2Schema = z.strictObject({
+  schemaVersion: z.literal(2), ...designFields,
+  layerPatterns: z.strictObject({ outer: layerPatternSchema, inner: layerPatternSchema }),
+}).refine(validActiveLayer, activeLayerError)
+
+export const designConfigSchema = z.discriminatedUnion('schemaVersion', [designConfigV1Schema, designConfigV2Schema])
+export type DesignConfigV1 = z.infer<typeof designConfigV1Schema>
+export type DesignConfigV2 = z.infer<typeof designConfigV2Schema>
+export type DesignConfig = DesignConfigV1 | DesignConfigV2
 
 export interface User {
   id: string
@@ -48,7 +61,7 @@ export interface Template {
   config: DesignConfig
 }
 
-export const defaultConfigs: Record<TemplateId, DesignConfig> = {
+export const defaultConfigs: Record<TemplateId, DesignConfigV1> = {
   linglong: {
     schemaVersion: 1, templateId: 'linglong', layers: 4, patternScale: 12,
     aperture: 0.55, material: 'ivory', separation: 0, cutaway: false,
@@ -66,7 +79,7 @@ export const defaultConfigs: Record<TemplateId, DesignConfig> = {
   },
 }
 
-export const defaultConfig: DesignConfig = defaultConfigs.linglong
+export const defaultConfig: DesignConfigV1 = defaultConfigs.linglong
 
 export const templates: Template[] = [
   {
